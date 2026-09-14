@@ -1,0 +1,17 @@
+pdf-inspector
+gliner
+torch
+rapidfuzz
+textual
+rich
+pysocks
+requests[socks]
+httpx[socks]
+pydantic
+openai
+shekar
+pymupdf
+pillow
+fastapi
+uvicorn
+python-multipart

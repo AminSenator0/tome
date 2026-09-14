@@ -1,0 +1,65 @@
+{
+  "general": {
+    "output_dir": "output",
+    "log_dir": "logs",
+    "log_retention_days": 7,
+    "genre": "auto",
+    "keep_raw_artifacts": false,
+    "min_chapter_bytes": 512,
+    "hf_mirror_endpoint": "https://hf-mirror.com",
+    "extract_images": true
+  },
+  "llm": {
+    "base_url": "https://api.avalai.ir/v1",
+    "api_key": "YOUR_API_KEY_HERE",
+    "model": "qwen3.8-flash",
+    "temperature": 0.7,
+    "top_p": 0.95,
+    "max_tokens": 16384,
+    "thinking": true,
+    "reasoning_effort": "medium",
+    "timeout": 600,
+    "stream_response": true
+  },
+  "proxy": {
+    "enabled": false,
+    "type": "socks5",
+    "host": "127.0.0.1",
+    "port": 10808
+  },
+  "nlp": {
+    "refine_metadata": true,
+    "persian_nlp": false,
+    "fast_mode": false,
+    "gliner": {
+      "enabled": true,
+      "model": "urchade/gliner_medium-v2.1",
+      "batch_size": 16,
+      "chunk_size_words": 280,
+      "chunk_overlap_words": 20,
+      "min_entity_frequency": 2,
+      "high_confidence_threshold": 0.85,
+      "fuzzy_similarity_threshold": 0.88,
+      "max_levenshtein_distance": 2
+    }
+  },
+  "translation": {
+    "target_language": "Persian",
+    "batch_size": 1,
+    "genre": "auto"
+  },
+  "typesetting": {
+    "line_spacing": 1.15,
+    "space_after_paragraph_pt": 4.0,
+    "margin_top_cm": 2.0,
+    "margin_bottom_cm": 2.0,
+    "margin_left_cm": 2.5,
+    "margin_right_cm": 2.5,
+    "font_size_body_pt": 12.0,
+    "font_size_h1_pt": 20.0,
+    "font_size_h2_pt": 16.0,
+    "font_size_h3_pt": 14.0,
+    "eastern_font": "Vazirmatn.ttf",
+    "western_font": "Times.ttf"
+  }
+}

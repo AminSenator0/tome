@@ -1,0 +1,223 @@
+================================================================================
+          TOME SETUP GUIDE: STEP-BY-STEP COMMANDS FOR macOS & LINUX
+================================================================================
+
+This document contains every single command needed to set up and run Tome
+from scratch.
+
+⚡ FASTEST METHOD: ONE-COMMAND AUTOMATED INSTALLER
+If you want everything done automatically in one shot:
+```bash
+cd /path/to/book
+chmod +x install.sh
+./install.sh
+```
+This automatically configures Homebrew/apt, Python 3.11, uv, dependencies,
+the offline GLiNER model, OfficeCLI, and registers the global `tome` command.
+
+--------------------------------------------------------------------------------
+PART 1: macOS SETUP (BRAND NEW MAC - APPLE SILICON M1/M2/M3/M4 & INTEL)
+--------------------------------------------------------------------------------
+
+Follow these steps in order. Open the Terminal application:
+(Press Command + Space, type "Terminal", and press Enter).
+
+STEP 1: VERIFY ZSH & INSTALL APPLE COMMAND LINE TOOLS
+macOS uses zsh by default. Install Apple's developer tools (includes Git & compilers):
+```bash
+xcode-select --install
+```
+(A popup dialog will appear. Click "Install" and wait for it to finish).
+
+
+STEP 2: INSTALL HOMEBREW (MAC PACKAGE MANAGER)
+Run the official Homebrew installer:
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+After installation finishes, activate Homebrew in your zsh profile:
+```bash
+# If using Apple Silicon Mac (M1/M2/M3/M4):
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+eval "$(/opt/homebrew/bin/brew shellenv)"
+
+# If using Intel Mac:
+echo 'eval "$(/usr/local/bin/brew shellenv)"' >> ~/.zprofile
+eval "$(/usr/local/bin/brew shellenv)"
+```
+
+
+STEP 3: INSTALL PYTHON 3.11, GIT, UV & LIBREOFFICE
+Install Python, Git, Astral uv (high-speed package manager), and LibreOffice:
+```bash
+brew install git python@3.11 uv
+brew install --cask libreoffice
+```
+
+
+STEP 4: NAVIGATE TO THE TOME PROJECT FOLDER
+Go into the directory where the Tome project is located:
+```bash
+cd /path/to/book
+```
+(Example: `cd ~/Documents/book` or `cd ~/Desktop/book`)
+
+
+STEP 5: CREATE A VIRTUAL ENVIRONMENT WITH UV
+Create an isolated Python 3.11 environment using uv:
+```bash
+uv venv --python 3.11
+```
+
+Activate the virtual environment:
+```bash
+source .venv/bin/activate
+```
+
+
+STEP 6: INSTALL TOME & ALL PYTHON DEPENDENCIES WITH UV
+Install all packages in editable mode using uv (lightning fast):
+```bash
+uv pip install -e .
+```
+
+
+STEP 7: REGISTER 'tome' COMMAND GLOBALLY IN SHELL PATH
+Make the 'tome' command directly executable from ANY new terminal window:
+```bash
+tome install-cli
+```
+(This automatically registers tome and adds it to ~/.zprofile and ~/.zshrc).
+
+
+STEP 8: PRE-DOWNLOAD & CACHE THE GLINER NLP MODEL
+Pre-download the offline named-entity extraction model so it runs instantly:
+```bash
+tome setup-model
+```
+
+
+STEP 9: INITIALIZE & VERIFY OFFICECLI FOR macOS
+Tome automatically detects macOS (Apple Silicon arm64 vs Intel x64), downloads
+the native binary, and removes Apple Gatekeeper quarantine. Run this command to
+verify and download:
+```bash
+python -c "from tome.core.docx import find_officecli; print('OfficeCLI ready at:', find_officecli())"
+```
+
+Verify the binary execution:
+```bash
+bin/officecli --version
+```
+
+
+STEP 10: RUNNING TOME (CHOOSE YOUR INTERFACE)
+
+Option A: Run Full Translation Pipeline on a Book
+```bash
+uv run tome run "sample.epub" -t
+```
+(Replaces "sample.epub" with your EPUB or PDF file).
+
+Option B: Interactive Terminal UI (TUI)
+```bash
+uv run tome tui
+```
+(Press Tab to navigate, Space/Enter to select, and Ctrl+Q or Ctrl+C to quit).
+
+Option C: Web Platform & REST API (Luxury Web GUI)
+```bash
+uv run tome web --host 127.0.0.1 --port 8000
+```
+Open your browser at: http://127.0.0.1:8000
+(Default login credentials: username `khorshid`, password `1382`).
+
+Option D: Run as a 24/7 Background Service on macOS (launchd)
+```bash
+# Register & start background auto-recovering service:
+uv run tome service install --host 127.0.0.1 --port 8000
+
+# Check service status:
+uv run tome service status
+
+# Stop and uninstall service:
+uv run tome service uninstall
+```
+
+
+================================================================================
+PART 2: LINUX / UBUNTU / DEBIAN VPS SETUP (24/7 SERVER DEPLOYMENT)
+================================================================================
+
+If deploying on a Linux VPS (Ubuntu 22.04/24.04 or Debian):
+
+STEP 1: UPDATE PACKAGES & INSTALL SYSTEM PREREQUISITES
+```bash
+sudo apt update && sudo apt install -y curl git python3 python3-venv python3-pip libreoffice
+```
+
+STEP 2: INSTALL UV (ASTRAL)
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source $HOME/.local/bin/env
+```
+
+STEP 3: NAVIGATE TO TOME DIRECTORY
+```bash
+cd /path/to/book
+```
+
+STEP 4: CREATE VENV & INSTALL DEPENDENCIES
+```bash
+uv venv --python 3.11
+source .venv/bin/activate
+uv pip install -e .
+```
+
+STEP 5: PRE-CACHE MODEL & INITIALIZE OFFICECLI
+```bash
+uv run tome setup-model
+python -c "from tome.core.docx import find_officecli; print('OfficeCLI ready at:', find_officecli())"
+```
+
+STEP 6: RUN AS A 24/7 SYSTEMD SERVICE ON LINUX VPS
+```bash
+# Install and start auto-restarting systemd service:
+sudo .venv/bin/tome service install --host 0.0.0.0 --port 8000
+
+# Check status:
+sudo systemctl status tome.service
+
+# View live service logs:
+journalctl -u tome.service -f
+```
+
+
+================================================================================
+PART 3: CONFIGURATION FILE (tome.json)
+================================================================================
+
+Edit `tome.json` in the root folder to set your LLM credentials:
+```json
+{
+  "general": {
+    "genre": "fantasy",
+    "output_dir": "output"
+  },
+  "llm": {
+    "base_url": "https://api.avalai.ir/v1",
+    "api_key": "YOUR_API_KEY_HERE",
+    "model": "qwen3.8-flash",
+    "timeout": 600
+  },
+  "translation": {
+    "target_language": "Persian",
+    "genre": "fantasy"
+  }
+}
+```
+
+Tome is now ready to process, extract, translate, and typeset books seamlessly
+on both macOS and Linux!
+================================================================================

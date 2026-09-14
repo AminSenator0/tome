@@ -1,0 +1,63 @@
+# Python & Virtual Environments
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+models/
+bin/
+scratch/
+uploads/
+
+# Runtime outputs & configurations
+logs/
+output/
+test_out/
+test_chapters/
+.tome/
+*.db
+tome.json
+
+# Web & Node dependencies and build artifacts
+node_modules/
+web/node_modules/
+web/dist/
+web/.vite/
+web/build/
+*.tsbuildinfo
+.pnpm-store/
+.bun/
+
+# Document and binary formats
+*.spec
+*.pdf
+*.epub
+*.mobi
+*.azw3
+*.cbz
+*.cbr
+*.png
+
+# OS & Environment
+.DS_Store
+Thumbs.db
+.env
+.env.*
+*.local
+
+.tome/
+.venv/
+bin/
+*.bak
+output/
+logs/
+uploads/
+__pycache__/
+web/node_modules/
+tome.json

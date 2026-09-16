@@ -25,6 +25,7 @@ import { Textarea } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { DiffViewer } from '../components/ui/DiffViewer'
 import { MermaidGraph } from '../components/ui/MermaidGraph'
+import { useI18n } from '../lib/i18n'
 
 type ToolType =
   | 'genre'
@@ -39,6 +40,7 @@ type ToolType =
   | 'compile'
 
 export const ToolsView: React.FC = () => {
+  const { t, tGenre } = useI18n()
   const [activeTool, setActiveTool] = useState<ToolType>('genre')
   const [books, setBooks] = useState<BookSummary[]>([])
   const [selectedBookFolder, setSelectedBookFolder] = useState<string>('')
@@ -145,23 +147,23 @@ export const ToolsView: React.FC = () => {
       }
       setGenreFilename(file.name)
     } catch (err: any) {
-      alert(err.message || 'Upload failed')
+      alert(err.message || t('tools.uploadFail'))
     } finally {
       setUploadingShared(false)
     }
   }
 
   const toolMenu: { id: ToolType; label: string; icon: React.ReactNode }[] = [
-    { id: 'genre', label: 'Genre Detector', icon: <Compass className="h-4 w-4" /> },
-    { id: 'images', label: 'Image Extractor', icon: <ImageIcon className="h-4 w-4" /> },
-    { id: 'metadata', label: 'Metadata Refiner', icon: <FileSearch className="h-4 w-4" /> },
-    { id: 'convert', label: 'Manuscript Converter', icon: <FileType2 className="h-4 w-4" /> },
-    { id: 'chapterize', label: 'Chapter Segmenter', icon: <ListOrdered className="h-4 w-4" /> },
-    { id: 'gliner', label: 'Entity Extractor', icon: <ScanFace className="h-4 w-4" /> },
-    { id: 'graph', label: 'Character Graph', icon: <GitGraph className="h-4 w-4" /> },
-    { id: 'translate', label: 'Single Translator', icon: <Languages className="h-4 w-4" /> },
-    { id: 'copyedit', label: 'NLP Copyeditor', icon: <Wand2 className="h-4 w-4" /> },
-    { id: 'compile', label: 'Word & PDF Compiler', icon: <FileCheck2 className="h-4 w-4" /> },
+    { id: 'genre', label: t('tools.toolGenre'), icon: <Compass className="h-4 w-4" /> },
+    { id: 'images', label: t('tools.toolImages'), icon: <ImageIcon className="h-4 w-4" /> },
+    { id: 'metadata', label: t('tools.toolMetadata'), icon: <FileSearch className="h-4 w-4" /> },
+    { id: 'convert', label: t('tools.toolConvert'), icon: <FileType2 className="h-4 w-4" /> },
+    { id: 'chapterize', label: t('tools.toolChapterize'), icon: <ListOrdered className="h-4 w-4" /> },
+    { id: 'gliner', label: t('tools.toolGliner'), icon: <ScanFace className="h-4 w-4" /> },
+    { id: 'graph', label: t('tools.toolGraph'), icon: <GitGraph className="h-4 w-4" /> },
+    { id: 'translate', label: t('tools.toolTranslate'), icon: <Languages className="h-4 w-4" /> },
+    { id: 'copyedit', label: t('tools.toolCopyedit'), icon: <Wand2 className="h-4 w-4" /> },
+    { id: 'compile', label: t('tools.toolCompile'), icon: <FileCheck2 className="h-4 w-4" /> },
   ]
 
   const runGenre = async () => {
@@ -175,7 +177,7 @@ export const ToolsView: React.FC = () => {
       const res = await Api.detectGenre(text, fn)
       setGenreResult(res)
     } catch (err: any) {
-      alert(err.message || 'Genre detection failed')
+      alert(err.message || t('tools.genreFail'))
     } finally {
       setLoadingGenre(false)
     }
@@ -188,7 +190,7 @@ export const ToolsView: React.FC = () => {
       const res = await Api.extractImages(uploadedFile || undefined, path)
       setImageResult(res)
     } catch (err: any) {
-      alert(err.message || 'Image extraction failed')
+      alert(err.message || t('tools.imagesFail'))
     } finally {
       setLoadingImages(false)
     }
@@ -201,7 +203,7 @@ export const ToolsView: React.FC = () => {
       const res = await Api.extractMetadata(uploadedFile || undefined, path, true)
       setMetaResult(res)
     } catch (err: any) {
-      alert(err.message || 'Metadata extraction failed')
+      alert(err.message || t('tools.metadataFail'))
     } finally {
       setLoadingMeta(false)
     }
@@ -219,7 +221,7 @@ export const ToolsView: React.FC = () => {
       setConvResult(res)
       await loadBooks()
     } catch (err: any) {
-      alert(err.message || 'Conversion failed')
+      alert(err.message || t('tools.convertFail'))
     } finally {
       setLoadingConv(false)
     }
@@ -241,14 +243,14 @@ export const ToolsView: React.FC = () => {
         title = converted.book_title
       }
       if (!text) {
-        alert('Please select a manuscript or upload a file to segment')
+        alert(t('tools.chapterizeNeed'))
         return
       }
       const res = await Api.segmentChapters(text, title)
       setChapResult(res)
       await loadBooks()
     } catch (err: any) {
-      alert(err.message || 'Segmentation failed')
+      alert(err.message || t('tools.chapterizeFail'))
     } finally {
       setLoadingChap(false)
     }
@@ -266,13 +268,13 @@ export const ToolsView: React.FC = () => {
         text = converted.preview
       }
       if (!text && !selectedBookFolder) {
-        alert('Please select a manuscript or upload a file to extract entities')
+        alert(t('tools.glinerNeed'))
         return
       }
       const res = await Api.extractEntities(text, glinerGenre, selectedBookFolder || undefined)
       setGlinerResult(res)
     } catch (err: any) {
-      alert(err.message || 'Entity extraction failed')
+      alert(err.message || t('tools.glinerFail'))
     } finally {
       setLoadingGliner(false)
     }
@@ -280,7 +282,7 @@ export const ToolsView: React.FC = () => {
 
   const runGraph = async () => {
     if (!selectedBookFolder) {
-      alert('Please select a book from the library to generate character graph')
+      alert(t('tools.graphNeed'))
       return
     }
     setLoadingGraph(true)
@@ -291,7 +293,7 @@ export const ToolsView: React.FC = () => {
       const res = await Api.buildGraph(chaps, ents, b.folder)
       setGraphMarkdown(res.graph_markdown || res.graph || '')
     } catch (err: any) {
-      alert(err.message || 'Graph generation failed')
+      alert(err.message || t('tools.graphFail'))
     } finally {
       setLoadingGraph(false)
     }
@@ -304,7 +306,7 @@ export const ToolsView: React.FC = () => {
       text = b.book_md ? b.book_md.slice(0, 1000) : ''
     }
     if (!text) {
-      alert('Please enter or select text to translate')
+      alert(t('tools.translateNeed'))
       return
     }
     setLoadingTrans(true)
@@ -319,7 +321,7 @@ export const ToolsView: React.FC = () => {
       )
       setTransResult(res)
     } catch (err: any) {
-      alert(err.message || 'Translation failed')
+      alert(err.message || t('tools.translateFail'))
     } finally {
       setLoadingTrans(false)
     }
@@ -333,7 +335,7 @@ export const ToolsView: React.FC = () => {
       if (text) setCopyeditText(text)
     }
     if (!text && !selectedBookFolder) {
-      alert('Please enter Persian text or choose a book to copyedit')
+      alert(t('tools.copyeditNeed'))
       return
     }
     setLoadingCopyedit(true)
@@ -344,7 +346,7 @@ export const ToolsView: React.FC = () => {
         setCopyeditText(res.edited_text)
       }
     } catch (err: any) {
-      alert(err.message || 'Copyedit failed')
+      alert(err.message || t('tools.copyeditFail'))
     } finally {
       setLoadingCopyedit(false)
     }
@@ -353,7 +355,7 @@ export const ToolsView: React.FC = () => {
   const runCompile = async () => {
     const targetBook = compileBookTitle || selectedBookFolder
     if (!targetBook) {
-      alert('Please select a book to compile')
+      alert(t('tools.compileNeed'))
       return
     }
     setLoadingCompile(true)
@@ -361,7 +363,7 @@ export const ToolsView: React.FC = () => {
       const res = await Api.compileDocx(targetBook)
       setCompileResult(res)
     } catch (err: any) {
-      alert(err.message || 'Compilation failed')
+      alert(err.message || t('tools.compileFail'))
     } finally {
       setLoadingCompile(false)
     }
@@ -372,12 +374,12 @@ export const ToolsView: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground px-1 block">
-            Upload Manuscript
+{t('tools.uploadManuscript')}
           </label>
           <label className="flex items-center justify-center h-11 w-full rounded-2xl border-0 bg-secondary px-4 py-2 text-sm text-foreground hover:opacity-90 cursor-pointer transition-all gap-2">
             <UploadCloud className="h-4 w-4 text-muted-foreground" />
             <span className="truncate">
-              {uploadedFile ? uploadedFile.name : 'Choose file or drag here'}
+              {uploadedFile ? uploadedFile.name : t('tools.chooseFile')}
             </span>
             <input
               type="file"
@@ -394,16 +396,16 @@ export const ToolsView: React.FC = () => {
 
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground px-1 block">
-            Or Choose from Library
+{t('tools.orChooseFromLibrary')}
           </label>
           <Select
             value={selectedBookFolder}
             onChange={(e) => handleSelectBook(e.target.value)}
           >
-            <option value="">Choose from Library...</option>
+            <option value="">{t('tools.chooseFromLibrary')}</option>
             {books.map((b) => (
               <option key={b.folder} value={b.folder}>
-                {b.title} ({b.total_chapters} chapters)
+                {t('pipeline.bookOption', { title: b.title, n: b.total_chapters })}
               </option>
             ))}
           </Select>
@@ -414,7 +416,7 @@ export const ToolsView: React.FC = () => {
         <div className="flex items-center justify-between px-3.5 py-2 rounded-2xl bg-secondary/60 text-xs mt-1">
           <div className="flex items-center gap-2">
             <BookOpen className="h-4 w-4 text-primary shrink-0" />
-            <span className="text-muted-foreground">Active Manuscript:</span>
+            <span className="text-muted-foreground">{t('tools.activeManuscript')}</span>
             <span className="font-semibold text-foreground truncate max-w-[280px]">{selectedBookFolder}</span>
           </div>
           <button
@@ -425,7 +427,7 @@ export const ToolsView: React.FC = () => {
             }}
             className="text-[11px] font-medium text-muted-foreground hover:text-foreground cursor-pointer px-2 py-0.5 rounded-full hover:bg-secondary transition-colors"
           >
-            Clear
+{t('common.clear')}
           </button>
         </div>
       )}
@@ -433,7 +435,7 @@ export const ToolsView: React.FC = () => {
       {uploadingShared && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1">
           <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <span>Ingesting manuscript & extracting metadata...</span>
+          <span>{t('tools.ingesting')}</span>
         </div>
       )}
     </div>
@@ -442,16 +444,16 @@ export const ToolsView: React.FC = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">Standalone Lab</h1>
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">{t('nav.tools')}</h1>
         <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-          Execute and inspect individual NLP, extraction, and compilation modules
+          {t('tools.subtitle')}
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <div className="lg:col-span-1 rounded-3xl bg-card p-3 space-y-1.5 h-fit border-0">
           <div className="text-[11px] font-semibold text-muted-foreground uppercase px-3 py-2 tracking-wider">
-            Available Tools
+{t('tools.availableTools')}
           </div>
           {toolMenu.map((tool) => {
             const active = activeTool === tool.id
@@ -477,9 +479,9 @@ export const ToolsView: React.FC = () => {
             <Card>
               <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3">
                 <div className="text-left">
-                  <CardTitle>Genre Detector</CardTitle>
+                  <CardTitle>{t('tools.toolGenre')}</CardTitle>
                   <CardDescription>
-                    Contextual heuristic classifier for fiction and non-fiction
+                    {t('tools.genreDesc')}
                   </CardDescription>
                 </div>
                 <Button
@@ -488,7 +490,7 @@ export const ToolsView: React.FC = () => {
                   loading={loadingGenre}
                   className="h-10 px-5 text-sm font-medium rounded-full w-full sm:w-auto shrink-0 whitespace-nowrap"
                 >
-                  <span>Detect Genre</span>
+                  <span>{t('tools.genreRun')}</span>
                 </Button>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -497,14 +499,14 @@ export const ToolsView: React.FC = () => {
                 {genreResult && (
                   <div className="p-4 rounded-3xl bg-secondary/50 mt-4 space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-muted-foreground">Detected Classification</span>
+                      <span className="text-xs font-medium text-muted-foreground">{t('tools.detectedClassification')}</span>
                       <Badge variant="success" className="capitalize text-xs font-semibold px-3 py-1">
                         {genreResult.genre}
                       </Badge>
                     </div>
                     {genreResult.detected && genreResult.detected.toLowerCase() !== genreResult.genre.toLowerCase() && (
                       <div className="text-xs text-muted-foreground flex items-center justify-between pt-1 border-t border-muted/20">
-                        <span>Matched Heuristic Rule:</span>
+                        <span>{t('tools.matchedRule')}</span>
                         <span className="font-mono text-foreground font-medium">{genreResult.detected}</span>
                       </div>
                     )}
@@ -518,9 +520,9 @@ export const ToolsView: React.FC = () => {
             <Card>
               <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3">
                 <div className="text-left">
-                  <CardTitle>Image Extractor</CardTitle>
+                  <CardTitle>{t('tools.toolImages')}</CardTitle>
                   <CardDescription>
-                    Extracts embedded raster figures, artwork, and covers from PDF/EPUB
+                    {t('tools.imagesDesc')}
                   </CardDescription>
                 </div>
                 <Button
@@ -529,7 +531,7 @@ export const ToolsView: React.FC = () => {
                   loading={loadingImages}
                   className="h-10 px-5 text-sm font-medium rounded-full w-full sm:w-auto shrink-0 whitespace-nowrap"
                 >
-                  <span>Extract Images</span>
+                  <span>{t('tools.imagesRun')}</span>
                 </Button>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -539,7 +541,7 @@ export const ToolsView: React.FC = () => {
                   <div className="mt-4 space-y-4">
                     <div className="flex items-center justify-between p-4 rounded-2xl bg-secondary text-xs">
                       <span>
-                        Found <strong>{imageResult.count}</strong> images in {imageResult.duration_seconds}s
+                        {t('tools.foundImages', { n: imageResult.count, s: imageResult.duration_seconds })}
                       </span>
                       {imageResult.count > 0 && (
                         <a
@@ -548,7 +550,7 @@ export const ToolsView: React.FC = () => {
                           className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full bg-foreground text-background text-xs font-medium"
                         >
                           <Download className="h-3.5 w-3.5" />
-                          <span>Download ZIP</span>
+                          <span>{t('book.downloadZip')}</span>
                         </a>
                       )}
                     </div>
@@ -573,9 +575,9 @@ export const ToolsView: React.FC = () => {
             <Card>
               <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3">
                 <div className="text-left">
-                  <CardTitle>Metadata Refiner</CardTitle>
+                  <CardTitle>{t('tools.toolMetadata')}</CardTitle>
                   <CardDescription>
-                    Extracts title, author, year, reading time, and synthesizes synopsis with LLM
+                    {t('tools.metadataDesc')}
                   </CardDescription>
                 </div>
                 <Button
@@ -584,7 +586,7 @@ export const ToolsView: React.FC = () => {
                   loading={loadingMeta}
                   className="h-10 px-5 text-sm font-medium rounded-full w-full sm:w-auto shrink-0 whitespace-nowrap"
                 >
-                  <span>Inspect Metadata</span>
+                  <span>{t('tools.metadataRun')}</span>
                 </Button>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -593,10 +595,7 @@ export const ToolsView: React.FC = () => {
                 {metaResult && (
                   <div className="p-4 rounded-2xl bg-secondary mt-4 space-y-2 text-xs">
                     <div className="text-base font-semibold text-foreground">{metaResult.title}</div>
-                    <div className="text-muted-foreground">
-                      Authors: {metaResult.authors?.join(', ') || 'N/A'} • Year: {metaResult.year || 'N/A'} • Est.{' '}
-                      {metaResult.reading_time}
-                    </div>
+                    <div className="text-muted-foreground">{t('tools.metaLine', { authors: metaResult.authors?.join(', ') || t('common.na'), year: metaResult.year || t('common.na'), reading: metaResult.reading_time })}</div>
                     <p className="pt-2 text-foreground/80 leading-relaxed">{metaResult.synopsis}</p>
                     {metaResult.keywords && (
                       <div className="flex flex-wrap gap-1.5 pt-2">
@@ -617,9 +616,9 @@ export const ToolsView: React.FC = () => {
             <Card>
               <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3">
                 <div className="text-left">
-                  <CardTitle>Manuscript Converter</CardTitle>
+                  <CardTitle>{t('tools.toolConvert')}</CardTitle>
                   <CardDescription>
-                    Converts PDF, EPUB, or MOBI to clean sanitized Markdown and saves to library
+                    {t('tools.convertDesc')}
                   </CardDescription>
                 </div>
                 <Button
@@ -628,7 +627,7 @@ export const ToolsView: React.FC = () => {
                   loading={loadingConv}
                   className="h-10 px-5 text-sm font-medium rounded-full w-full sm:w-auto shrink-0 whitespace-nowrap"
                 >
-                  <span>Convert to Markdown</span>
+                  <span>{t('tools.convertRun')}</span>
                 </Button>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -639,7 +638,7 @@ export const ToolsView: React.FC = () => {
                     <div className="space-y-0.5">
                       <div className="font-semibold text-foreground">{convResult.book_title}</div>
                       <div className="text-muted-foreground">
-                        {convResult.page_count} pages • Converted and saved to library
+                        {t('tools.convertLine', { pages: convResult.page_count })}
                       </div>
                     </div>
                     <a
@@ -648,7 +647,7 @@ export const ToolsView: React.FC = () => {
                       className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full bg-foreground text-background text-xs font-medium hover:opacity-90 transition-opacity"
                     >
                       <Download className="h-3.5 w-3.5" />
-                      <span>Download Markdown</span>
+                      <span>{t('tools.downloadMarkdown')}</span>
                     </a>
                   </div>
                 )}
@@ -660,9 +659,9 @@ export const ToolsView: React.FC = () => {
             <Card>
               <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3">
                 <div className="text-left">
-                  <CardTitle>Chapter Segmenter</CardTitle>
+                  <CardTitle>{t('tools.toolChapterize')}</CardTitle>
                   <CardDescription>
-                    Splits Markdown text into clean ordered chapter files
+                    {t('tools.chapterizeDesc')}
                   </CardDescription>
                 </div>
                 <Button
@@ -671,7 +670,7 @@ export const ToolsView: React.FC = () => {
                   loading={loadingChap}
                   className="h-10 px-5 text-sm font-medium rounded-full w-full sm:w-auto shrink-0 whitespace-nowrap"
                 >
-                  <span>Segment Chapters</span>
+                  <span>{t('tools.chapterizeRun')}</span>
                 </Button>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -680,7 +679,7 @@ export const ToolsView: React.FC = () => {
                 {chapResult && (
                   <div className="mt-4 p-4 rounded-2xl bg-secondary space-y-2 text-xs">
                     <div className="font-semibold text-foreground">
-                      Created {chapResult.chapter_count || chapResult.total_chapters} chapter files in {chapResult.output_dir}
+                      {t('tools.chapterizeLine', { n: chapResult.chapter_count || chapResult.total_chapters, dir: chapResult.output_dir })}
                     </div>
                     <div className="flex flex-wrap gap-1.5 pt-2">
                       {(chapResult.chapters || []).map((ch: any) => (
@@ -699,9 +698,9 @@ export const ToolsView: React.FC = () => {
             <Card>
               <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3">
                 <div className="text-left">
-                  <CardTitle>Entity Extractor</CardTitle>
+                  <CardTitle>{t('tools.toolGliner')}</CardTitle>
                   <CardDescription>
-                    Zero-shot entity extraction across custom genres
+                    {t('tools.glinerDesc')}
                   </CardDescription>
                 </div>
                 <Button
@@ -710,36 +709,36 @@ export const ToolsView: React.FC = () => {
                   loading={loadingGliner}
                   className="h-10 px-5 text-sm font-medium rounded-full w-full sm:w-auto shrink-0 whitespace-nowrap"
                 >
-                  <span>Extract Entities</span>
+                  <span>{t('tools.glinerRun')}</span>
                 </Button>
               </CardHeader>
               <CardContent className="space-y-4">
                 {renderSharedSourceSelector()}
                 <Select
-                  label="Taxonomy Preset"
+                  label={t('tools.taxonomyPreset')}
                   value={glinerGenre}
                   onChange={(e) => setGlinerGenre(e.target.value)}
                 >
-                  <option value="auto">Auto (Detect from text)</option>
-                  <option value="general">General Literature</option>
-                  <option value="fantasy">Fantasy & Adventure</option>
-                  <option value="scifi">Science Fiction</option>
-                  <option value="romance">Romance & Drama</option>
-                  <option value="thriller_mystery">Thriller & Mystery</option>
-                  <option value="horror">Horror & Supernatural</option>
-                  <option value="historical_fiction">Historical Fiction</option>
-                  <option value="business">Business & Economics</option>
-                  <option value="self_help_psychology">Self-Help & Personal Development</option>
-                  <option value="health_fitness">Health & Fitness</option>
-                  <option value="psychology_communication">Psychology & Communication</option>
-                  <option value="spirituality_mindset">Spirituality & Mindset</option>
-                  <option value="academic_research">Academic & Research</option>
-                  <option value="biography_memoir">Biography & Memoir</option>
+                  <option value="auto">{tGenre('auto')}</option>
+                  <option value="general">{tGenre('general')}</option>
+                  <option value="fantasy">{tGenre('fantasy')}</option>
+                  <option value="scifi">{tGenre('scifi')}</option>
+                  <option value="romance">{tGenre('romance')}</option>
+                  <option value="thriller_mystery">{tGenre('thriller_mystery')}</option>
+                  <option value="horror">{tGenre('horror')}</option>
+                  <option value="historical_fiction">{tGenre('historical_fiction')}</option>
+                  <option value="business">{tGenre('business')}</option>
+                  <option value="self_help_psychology">{tGenre('self_help_psychology')}</option>
+                  <option value="health_fitness">{tGenre('health_fitness')}</option>
+                  <option value="psychology_communication">{tGenre('psychology_communication')}</option>
+                  <option value="spirituality_mindset">{tGenre('spirituality_mindset')}</option>
+                  <option value="academic_research">{tGenre('academic_research')}</option>
+                  <option value="biography_memoir">{tGenre('biography_memoir')}</option>
                 </Select>
 
                 {glinerResult && (
                   <div className="mt-4 p-4 rounded-2xl bg-secondary space-y-3 text-xs">
-                    <div className="font-semibold text-foreground">Extracted {glinerResult.raw_count} raw entities:</div>
+                    <div className="font-semibold text-foreground">{t('tools.extractedEntities', { n: glinerResult.raw_count })}</div>
                     <div className="space-y-2">
                       {Object.entries(glinerResult.clustered).map(([cat, ents]: [string, any]) => (
                         <div key={cat} className="space-y-1">
@@ -764,9 +763,9 @@ export const ToolsView: React.FC = () => {
             <Card>
               <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3">
                 <div className="text-left">
-                  <CardTitle>Character Graph</CardTitle>
+                  <CardTitle>{t('tools.toolGraph')}</CardTitle>
                   <CardDescription>
-                    Builds semantic character dossiers and interactive relationship diagrams
+                    {t('tools.graphDesc')}
                   </CardDescription>
                 </div>
                 <Button
@@ -775,7 +774,7 @@ export const ToolsView: React.FC = () => {
                   loading={loadingGraph}
                   className="h-10 px-5 text-sm font-medium rounded-full w-full sm:w-auto shrink-0 whitespace-nowrap"
                 >
-                  <span>Generate Graph</span>
+                  <span>{t('tools.graphRun')}</span>
                 </Button>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -790,7 +789,7 @@ export const ToolsView: React.FC = () => {
                   </div>
                 ) : (
                   <div className="p-8 text-center text-xs text-muted-foreground bg-secondary/30 rounded-2xl">
-                    Select a manuscript from the library and click Generate Graph to view the interactive diagram.
+                    {t('tools.graphEmpty')}
                   </div>
                 )}
               </CardContent>
@@ -801,9 +800,9 @@ export const ToolsView: React.FC = () => {
             <Card>
               <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3">
                 <div className="text-left">
-                  <CardTitle>Single Translator</CardTitle>
+                  <CardTitle>{t('tools.toolTranslate')}</CardTitle>
                   <CardDescription>
-                    Translates a single passage with optional glossary mapping
+                    {t('tools.translateDesc')}
                   </CardDescription>
                 </div>
                 <Button
@@ -812,25 +811,25 @@ export const ToolsView: React.FC = () => {
                   loading={loadingTrans}
                   className="h-10 px-5 text-sm font-medium rounded-full w-full sm:w-auto shrink-0 whitespace-nowrap"
                 >
-                  <span>Translate Text</span>
+                  <span>{t('tools.translateRun')}</span>
                 </Button>
               </CardHeader>
               <CardContent className="space-y-4">
                 {renderSharedSourceSelector()}
                 <Input
-                  label="Target Language"
+                  label={t('tools.targetLanguage')}
                   value={transLang}
                   onChange={(e) => setTransLang(e.target.value)}
                 />
                 <Textarea
-                  label="Source Text"
+                  label={t('tools.sourceText')}
                   value={transText}
                   onChange={(e) => setTransText(e.target.value)}
                   className="min-h-[120px]"
-                  placeholder="Paste excerpt to translate or choose a book above..."
+                  placeholder={t('tools.sourceTextPh')}
                 />
                 <Textarea
-                  label="Glossary Mapping (Optional)"
+                  label={t('tools.glossaryMapping')}
                   value={transGlossary}
                   onChange={(e) => setTransGlossary(e.target.value)}
                   className="min-h-[80px]"
@@ -839,7 +838,7 @@ export const ToolsView: React.FC = () => {
 
                 {transResult && (
                   <div className="mt-4 p-4 rounded-2xl bg-secondary space-y-2">
-                    <span className="text-xs font-semibold text-muted-foreground uppercase">Output</span>
+                    <span className="text-xs font-semibold text-muted-foreground uppercase">{t('tools.output')}</span>
                     <pre
                       dir="rtl"
                       className="font-persian text-sm whitespace-pre-wrap leading-relaxed text-foreground"
@@ -856,9 +855,9 @@ export const ToolsView: React.FC = () => {
             <Card>
               <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3">
                 <div className="text-left">
-                  <CardTitle>NLP Copyeditor</CardTitle>
+                  <CardTitle>{t('tools.toolCopyedit')}</CardTitle>
                   <CardDescription>
-                    Linguistic normalizer, ZWNJ repair, and interactive orthographic review (Shekar)
+                    {t('tools.copyeditDesc')}
                   </CardDescription>
                 </div>
                 <Button
@@ -867,14 +866,14 @@ export const ToolsView: React.FC = () => {
                   loading={loadingCopyedit}
                   className="h-10 px-5 text-sm font-medium rounded-full w-full sm:w-auto shrink-0 whitespace-nowrap"
                 >
-                  <span>Run Copyedit</span>
+                  <span>{t('tools.copyeditRun')}</span>
                 </Button>
               </CardHeader>
               <CardContent className="space-y-4">
                 {renderSharedSourceSelector()}
                 <Textarea
                   dir="rtl"
-                  label="Persian Text"
+                  label={t('tools.persianText')}
                   value={copyeditText}
                   onChange={(e) => setCopyeditText(e.target.value)}
                   className="min-h-[140px] font-persian text-sm"
@@ -899,9 +898,9 @@ export const ToolsView: React.FC = () => {
             <Card>
               <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3">
                 <div className="text-left">
-                  <CardTitle>Word & PDF Compiler</CardTitle>
+                  <CardTitle>{t('tools.toolCompile')}</CardTitle>
                   <CardDescription>
-                    Assembles translated Markdown chapters into formatted .docx and .pdf
+                    {t('tools.compileDesc')}
                   </CardDescription>
                 </div>
                 <Button
@@ -910,18 +909,18 @@ export const ToolsView: React.FC = () => {
                   loading={loadingCompile}
                   className="h-10 px-5 text-sm font-medium rounded-full w-full sm:w-auto shrink-0 whitespace-nowrap"
                 >
-                  <span>Compile Volume</span>
+                  <span>{t('tools.compileRun')}</span>
                 </Button>
               </CardHeader>
               <CardContent className="space-y-4">
                 <Select
-                  label="Target Book Directory"
+                  label={t('tools.targetBook')}
                   value={compileBookTitle}
                   onChange={(e) => setCompileBookTitle(e.target.value)}
                 >
                   {books.map((b) => (
                     <option key={b.folder} value={b.folder}>
-                      {b.title} ({b.translated_chapters}/{b.total_chapters} translated)
+                      {t('tools.bookTranslatedOption', { title: b.title, done: b.translated_chapters, total: b.total_chapters })}
                     </option>
                   ))}
                 </Select>
@@ -929,9 +928,9 @@ export const ToolsView: React.FC = () => {
                 {compileResult && (
                   <div className="p-4 rounded-2xl bg-secondary mt-4 flex items-center justify-between text-xs">
                     <div>
-                      <span className="font-semibold text-foreground block">Compilation Succeeded</span>
+                      <span className="font-semibold text-foreground block">{t('tools.compileOk')}</span>
                       <span className="text-muted-foreground text-[11px] block mt-0.5">
-                        Generated Word OpenXML and PDF manuscript volumes.
+                        {t('tools.compileOkSub')}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -942,7 +941,7 @@ export const ToolsView: React.FC = () => {
                           className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-xs font-medium"
                         >
                           <Download className="h-3.5 w-3.5" />
-                          <span>Download DOCX</span>
+                          <span>{t('tools.downloadDocx')}</span>
                         </a>
                       )}
                       {compileResult.pdf_url && (
@@ -952,7 +951,7 @@ export const ToolsView: React.FC = () => {
                           className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-secondary text-foreground text-xs font-medium"
                         >
                           <Download className="h-3.5 w-3.5" />
-                          <span>Download PDF</span>
+                          <span>{t('tools.downloadPdf')}</span>
                         </a>
                       )}
                     </div>

@@ -1,6 +1,7 @@
 import React from 'react'
 import { Menu, Moon, Sun, LogOut, ChevronRight, Home, User } from 'lucide-react'
 import { Logo } from './ui/Logo'
+import { useI18n } from '../lib/i18n'
 
 interface NavbarProps {
   onToggleSidebar: () => void
@@ -21,6 +22,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentTabName,
   bookTitle,
 }) => {
+  const { t } = useI18n()
+
   return (
     <header className="sticky top-0 z-50 w-full bg-background/95 backdrop-blur-xl select-none border-b border-muted/20">
       <div className="flex h-16 items-center justify-between px-4 sm:px-6">
@@ -62,7 +65,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             type="button"
             onClick={onToggleTheme}
             className="inline-flex items-center justify-center h-10 w-10 rounded-full bg-secondary text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            title="Toggle theme"
+            title={t('nav.toggleTheme')}
           >
             {isDark ? <Sun className="h-4 w-4" strokeWidth={1.5} /> : <Moon className="h-4 w-4" strokeWidth={1.5} />}
           </button>
@@ -72,7 +75,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               type="button"
               onClick={onLogout}
               className="inline-flex items-center justify-center h-10 w-10 rounded-full bg-secondary text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors"
-              title="Sign out"
+              title={t('nav.signOut')}
             >
               <LogOut className="h-4 w-4" strokeWidth={1.5} />
             </button>

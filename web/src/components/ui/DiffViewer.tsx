@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Check, X, Copy, Columns, Rows, CheckCheck } from 'lucide-react'
 import { Button } from './Button'
 import { Badge } from './Badge'
+import { useI18n } from '../../lib/i18n'
 
 interface DiffItem {
   id: number
@@ -102,6 +103,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
   changes,
   onCommit,
 }) => {
+  const { t } = useI18n()
   const [copied, setCopied] = useState(false)
 
   // Parse lines into interactive diff segments
@@ -164,24 +166,24 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
     <div className="rounded-3xl bg-card overflow-hidden text-xs border-0">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-secondary/50">
         <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold text-foreground">Interactive Word-Level NLP Review</span>
+          <span className="text-sm font-semibold text-foreground">{t('diff.title')}</span>
           <Badge variant="success">
-            {items.length} line changes detected
+            {t('diff.changes', { n: items.length })}
           </Badge>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant="secondary" onClick={handleAcceptAll}>
             <CheckCheck className="h-3.5 w-3.5 mr-1" />
-            <span>Accept All</span>
+            <span>{t('diff.acceptAll')}</span>
           </Button>
           <Button size="sm" variant="secondary" onClick={handleRejectAll}>
             <X className="h-3.5 w-3.5 mr-1" />
-            <span>Reject All</span>
+            <span>{t('diff.rejectAll')}</span>
           </Button>
           <Button size="sm" variant="primary" onClick={handleCopy}>
             {copied ? <Check className="h-3.5 w-3.5 mr-1" /> : <Copy className="h-3.5 w-3.5 mr-1" />}
-            <span>{copied ? 'Copied' : 'Copy Final'}</span>
+            <span>{copied ? t('diff.copied') : t('diff.copyFinal')}</span>
           </Button>
         </div>
       </div>
@@ -189,7 +191,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
       <div className="p-4 space-y-2 max-h-[460px] overflow-y-auto custom-scrollbar">
         {items.length === 0 ? (
           <div className="p-8 text-center text-muted-foreground text-xs">
-            No textual differences detected. Text is already normalized.
+            {t('diff.noDiff')}
           </div>
         ) : (
           items.map((item) => {
@@ -268,7 +270,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
                           ? 'bg-success text-white'
                           : 'bg-secondary hover:bg-success-light text-success'
                       }`}
-                      title="Accept normalization"
+                      title={t('diff.acceptTitle')}
                     >
                       <Check className="h-4 w-4 stroke-[2]" />
                     </button>
@@ -280,7 +282,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
                           ? 'bg-destructive text-white'
                           : 'bg-secondary hover:bg-destructive/20 text-destructive'
                       }`}
-                      title="Reject change"
+                      title={t('diff.rejectTitle')}
                     >
                       <X className="h-4 w-4 stroke-[2]" />
                     </button>

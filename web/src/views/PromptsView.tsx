@@ -6,6 +6,7 @@ import rehypeRaw from 'rehype-raw'
 import { Api } from '../api'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
+import { useI18n } from '../lib/i18n'
 
 const KNOWN_VARIABLES: Record<string, { label: string; color: string; badge: string }> = {
   '{target_language}': {
@@ -50,7 +51,19 @@ const KNOWN_VARIABLES: Record<string, { label: string; color: string; badge: str
   },
 }
 
+const VAR_LABEL_KEYS: Record<string, string> = {
+  '{target_language}': 'prompts.varTargetLanguage',
+  '{user_style_rules}': 'prompts.varStyle',
+  '{graph}': 'prompts.varGraph',
+  '{glossary}': 'prompts.varGlossary',
+  '{manuscript_filename}': 'prompts.varFilename',
+  '{front_matter}': 'prompts.varFrontMatter',
+  '{first_chapter}': 'prompts.varFirstChapter',
+  '{metadata}': 'prompts.varMetadata',
+}
+
 export const PromptsView: React.FC = () => {
+  const { t } = useI18n()
   const [prompts, setPrompts] = useState<Record<string, string>>({})
   const [originalPrompts, setOriginalPrompts] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
@@ -64,33 +77,33 @@ export const PromptsView: React.FC = () => {
     { label: string; desc: string; vars: string[] }
   > = {
     chapter_translation_with_glossary_system_prompt: {
-      label: 'Chapter Translation (With Glossary)',
-      desc: 'Primary publication-grade translation prompt adhering to glossary and character dossier',
+      label: t('prompts.name1'),
+      desc: t('prompts.name1Desc'),
       vars: ['{target_language}', '{user_style_rules}', '{graph}'],
     },
     chapter_translation_no_gliner_system_prompt: {
-      label: 'Chapter Translation (Autonomous)',
-      desc: 'Translation prompt with inline entity extraction when no glossary is pre-compiled',
+      label: t('prompts.name2'),
+      desc: t('prompts.name2Desc'),
       vars: ['{target_language}', '{user_style_rules}', '{graph}'],
     },
     fantasy_translation_guidelines: {
-      label: 'Fantasy Localization Guidelines',
-      desc: 'Specialized literary guidelines (Dual-Voice narration/dialogue, creative compounding, in-universe oaths) appended when genre is fantasy',
+      label: t('prompts.name3'),
+      desc: t('prompts.name3Desc'),
       vars: ['{target_language}'],
     },
     glossary_translation_system_prompt: {
-      label: 'Glossary Terminology Compiler',
-      desc: 'System prompt for translating and standardizing worldbuilding terminology tables',
+      label: t('prompts.name4'),
+      desc: t('prompts.name4Desc'),
       vars: ['{target_language}'],
     },
     metadata_refinement_system_prompt: {
-      label: 'Metadata Refinement',
-      desc: 'Bibliographic metadata extraction, synopsis normalization, and cataloging',
+      label: t('prompts.name5'),
+      desc: t('prompts.name5Desc'),
       vars: ['{metadata}'],
     },
     user_style_rules: {
-      label: 'User Narrative Style Rules',
-      desc: 'High-level authorial directives, tone constraints, and custom style rules',
+      label: t('prompts.name6'),
+      desc: t('prompts.name6Desc'),
       vars: [],
     },
   }
@@ -102,7 +115,7 @@ export const PromptsView: React.FC = () => {
       setPrompts(data)
       setOriginalPrompts(data)
     } catch (err: any) {
-      alert(err.message || 'Failed to load prompts')
+      alert(err.message || t('prompts.loadFail'))
     } finally {
       setLoading(false)
     }
@@ -123,7 +136,7 @@ export const PromptsView: React.FC = () => {
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch (err: any) {
-      alert(err.message || 'Failed to save prompts')
+      alert(err.message || t('prompts.saveFail'))
     } finally {
       setSaving(false)
     }
@@ -146,7 +159,7 @@ export const PromptsView: React.FC = () => {
             <span
               key={i}
               className={`${KNOWN_VARIABLES[part].color} font-mono font-medium px-1.5 py-0.5 rounded-md inline-block`}
-              title={KNOWN_VARIABLES[part].label}
+              title={t(VAR_LABEL_KEYS[part])}
             >
               {part.replace(/^\{|\}$/g, "")}
             </span>
@@ -157,7 +170,7 @@ export const PromptsView: React.FC = () => {
             <span
               key={i}
               className="bg-destructive/15 text-destructive border border-destructive/30 font-mono font-medium px-1.5 py-0.5 rounded-md inline-block"
-              title="Unknown variable identifier"
+              title={t('prompts.unknownVar')}
             >
               {part.replace(/^\{|\}$/g, "")}
             </span>
@@ -200,7 +213,7 @@ export const PromptsView: React.FC = () => {
             },
           }}
         >
-          {text || 'No template defined.'}
+          {text || t('prompts.noTemplate')}
         </ReactMarkdown>
       </div>
     )
@@ -210,9 +223,9 @@ export const PromptsView: React.FC = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">Prompt Studio</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">{t('nav.prompts')}</h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-            Refine system templates, style constraints, and variable injection hooks
+            {t('prompts.subtitle')}
           </p>
         </div>
 
@@ -222,15 +235,15 @@ export const PromptsView: React.FC = () => {
             disabled={!hasChanges || saving}
             loading={saving}
             className="w-full sm:w-auto h-10 px-5 text-sm font-medium rounded-full justify-center"
-            title={hasChanges ? 'Save changes to tome.json' : 'No changes to save'}
+            title={hasChanges ? t('prompts.savedTitle') : t('prompts.noChangesTitle')}
           >
             {saved ? (
               <span className="flex items-center gap-1.5">
                 <Check className="h-4 w-4" />
-                <span>Saved</span>
+                <span>{t('common.saved')}</span>
               </span>
             ) : (
-              <span>Save Prompts</span>
+              <span>{t('prompts.save')}</span>
             )}
           </Button>
         </div>
@@ -238,13 +251,13 @@ export const PromptsView: React.FC = () => {
 
       {loading ? (
         <div className="flex items-center justify-center p-16 text-muted-foreground text-xs">
-          Loading prompt templates...
+          {t('prompts.loading')}
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           <div className="lg:col-span-1 rounded-3xl bg-card p-3 space-y-1.5 h-fit border-0">
             <div className="text-[11px] font-semibold text-muted-foreground uppercase px-3 py-2 tracking-wider">
-              System Templates
+              {t('prompts.systemTemplates')}
             </div>
             {Object.keys(promptNames).map((k) => {
               const info = promptNames[k]
@@ -306,7 +319,7 @@ export const PromptsView: React.FC = () => {
                       }`}
                     >
                       <Eye className="h-3.5 w-3.5" />
-                      <span>Preview</span>
+                      <span>{t('common.preview')}</span>
                     </button>
                     <button
                       type="button"
@@ -318,7 +331,7 @@ export const PromptsView: React.FC = () => {
                       }`}
                     >
                       <Code className="h-3.5 w-3.5" />
-                      <span>Edit Raw</span>
+                      <span>{t('common.editRaw')}</span>
                     </button>
                   </div>
 
@@ -327,7 +340,7 @@ export const PromptsView: React.FC = () => {
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-[11px] text-muted-foreground flex items-center gap-1 mr-0.5">
                         <Variable className="h-3 w-3" />
-                        <span>Vars:</span>
+                        <span>{t('prompts.vars')}</span>
                       </span>
                       {promptNames[activePromptKey].vars.map((v) => {
                         const meta = KNOWN_VARIABLES[v]
@@ -357,11 +370,11 @@ export const PromptsView: React.FC = () => {
                         value={prompts[activePromptKey] || ''}
                         onChange={(e) => handlePromptChange(e.target.value)}
                         className="w-full font-mono text-xs min-h-[460px] leading-relaxed border-0 bg-transparent focus:outline-none select-text text-foreground resize-y custom-scrollbar"
-                        placeholder="Write system prompt..."
+                        placeholder={t('prompts.writePrompt')}
                       />
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-muted-foreground px-2">
-                      <span>Supported variables highlight dynamically in Preview mode.</span>
+                      <span>{t('prompts.supportedVars')}</span>
                       <Button
                         variant="secondary"
                         size="sm"
@@ -370,7 +383,7 @@ export const PromptsView: React.FC = () => {
                         className="h-8 text-xs px-3 rounded-full"
                       >
                         <RotateCcw className="h-3.5 w-3.5 mr-1" />
-                        <span>Discard Changes</span>
+                        <span>{t('prompts.discard')}</span>
                       </Button>
                     </div>
                   </div>

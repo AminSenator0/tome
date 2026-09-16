@@ -2,6 +2,7 @@ import React, { useMemo } from 'react'
 import { Check } from 'lucide-react'
 import { Button } from './Button'
 import { Input } from './Input'
+import { useI18n } from '../../lib/i18n'
 
 export interface ChapterItem {
   slug: string
@@ -22,6 +23,7 @@ export const ChapterSelector: React.FC<ChapterSelectorProps> = ({
   value,
   onChange,
 }) => {
+  const { t } = useI18n()
   const selectedSet = useMemo(() => {
     const set = new Set<string>()
     const trimmed = (value || '').trim().toLowerCase()
@@ -111,24 +113,24 @@ export const ChapterSelector: React.FC<ChapterSelectorProps> = ({
     <div className="space-y-4 rounded-2xl border border-border bg-card/60 p-4 text-sm soft-shadow">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <label className="font-semibold text-foreground">
-          Chapter Range Selection ({selectedSet.size}/{chapters.length} selected)
+          {t('chaptersel.title', { sel: selectedSet.size, total: chapters.length })}
         </label>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={selectAll} className="h-7 text-xs px-3">
-            All
+{t('chaptersel.all')}
           </Button>
           {chapters.length >= 3 && (
             <Button type="button" variant="outline" size="sm" onClick={() => selectFirstN(3)} className="h-7 text-xs px-3">
-              First 3
+{t('chaptersel.first3')}
             </Button>
           )}
           {chapters.length >= 5 && (
             <Button type="button" variant="outline" size="sm" onClick={() => selectFirstN(5)} className="h-7 text-xs px-3">
-              First 5
+{t('chaptersel.first5')}
             </Button>
           )}
           <Button type="button" variant="ghost" size="sm" onClick={clearAll} className="h-7 text-xs px-3 text-muted-foreground">
-            Clear
+{t('chaptersel.clear')}
           </Button>
         </div>
       </div>
@@ -136,7 +138,7 @@ export const ChapterSelector: React.FC<ChapterSelectorProps> = ({
       <Input
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="Range e.g. all, 5, 1-10, 1,3,5"
+        placeholder={t('chaptersel.placeholder')}
         className="font-mono text-sm h-10 rounded-xl"
       />
 

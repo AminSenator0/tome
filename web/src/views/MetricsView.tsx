@@ -12,8 +12,12 @@ import {
 import { Api, MetricsDashboard } from '../api'
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
+import { useI18n } from '../lib/i18n'
 
-const fmtInt = (n: number) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(n)
+const getLocale = () => {
+  try { return localStorage.getItem('tome_lang') === 'fa' ? 'fa-IR' : 'en-US' } catch { return 'en-US' }
+}
+const fmtInt = (n: number) => new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 }).format(n)
 
 const fmtTokens = (n: number) => {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
@@ -30,7 +34,7 @@ const fmtDuration = (sec: number) => {
 
 const fmtDate = (ts: number) => {
   if (!ts) return '—'
-  return new Date(ts * 1000).toLocaleString('en-US', {
+  return new Date(ts * 1000).toLocaleString(getLocale(), {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -103,6 +107,7 @@ const Donut: React.FC<{ segments: DonutSegment[]; size?: number; centerLabel: st
 }
 
 export const MetricsView: React.FC = () => {
+  const { t: tx, formatNumber, formatDate } = useI18n()
   const [data, setData] = useState<MetricsDashboard | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -115,7 +120,7 @@ export const MetricsView: React.FC = () => {
       await (Api.updateConfig as any)({ exchange_rate_auto: !data?.rate_info?.auto })
       await load()
     } catch (err: any) {
-      alert(err?.message || 'Failed to toggle auto rate')
+      alert(err?.message || tx('metrics.toggleFail'))
     } finally {
       setSavingRate(false)
     }
@@ -129,7 +134,7 @@ export const MetricsView: React.FC = () => {
       const res = await Api.getMetricsDashboard()
       setData(res)
     } catch (err: any) {
-      setError(err?.message || 'Failed to load metrics')
+      setError(err?.message || tx('metrics.loadFail'))
     } finally {
       setLoading(false)
     }
@@ -151,7 +156,7 @@ export const MetricsView: React.FC = () => {
       await (Api.updateConfig as any)({ exchange_rate: val })
       await load()
     } catch (err: any) {
-      alert(err?.message || 'Failed to save rate')
+      alert(err?.message || tx('metrics.saveFail'))
     } finally {
       setSavingRate(false)
     }
@@ -169,7 +174,7 @@ export const MetricsView: React.FC = () => {
     return (
       <div className="space-y-4">
         <p className="text-destructive">{error}</p>
-        <Button size="sm" onClick={load}>Retry</Button>
+        <Button size="sm" onClick={load}>{tx('common.retry')}</Button>
       </div>
     )
   }
@@ -217,15 +222,15 @@ export const MetricsView: React.FC = () => {
         <div>
           <h1 className="text-2xl font-semibold flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-primary" />
-            Cost Dashboard
+            {tx('nav.metrics')}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Recomputed from chapter-level records — updated {fmtDate(data.generated_at)}
+            {tx('metrics.updated', { date: fmtDate(data.generated_at) })}
           </p>
         </div>
         <Button size="sm" className="gap-1.5" onClick={load} loading={loading}>
           <RefreshCw className="h-3.5 w-3.5" />
-          <span>Refresh</span>
+          <span>{tx('common.refresh')}</span>
         </Button>
       </div>
 
@@ -236,38 +241,38 @@ export const MetricsView: React.FC = () => {
             <div className="flex flex-wrap items-end justify-between gap-6">
               <div>
                 <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
-                  <Coins className="h-3.5 w-3.5" /> Total Spent
+                  <Coins className="h-3.5 w-3.5" /> {tx('metrics.totalSpent')}
                 </p>
                 <p className="mt-2 text-4xl lg:text-5xl font-bold tabular-nums tracking-tight">
                   {fmtInt(grandCost)}
-                  <span className="text-base font-medium text-muted-foreground ms-2">Toman</span>
+                  <span className="text-base font-medium text-muted-foreground ms-2">{tx('metrics.toman')}</span>
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground tabular-nums">
-                  <span>${t.cost_usd.toFixed(2)} USD at translation time</span>
+                  <span>{tx('metrics.usdAtTranslation', { usd: t.cost_usd.toFixed(2) })}</span>
                   <span className="inline-flex items-center gap-1 text-foreground">
                     <TrendingUp className="h-3.5 w-3.5 text-primary" />
-                    {fmtInt(t.cost_toman_current)} Toman at today's rate
+                    {tx('metrics.todaysRate', { n: fmtInt(t.cost_toman_current) })}
                   </span>
                 </div>
               </div>
               {creditNumber !== null && (
                 <div className="rounded-2xl bg-background/70 backdrop-blur px-5 py-4">
                   <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
-                    <Wallet className="h-3.5 w-3.5" /> Wallet Balance (live)
+                    <Wallet className="h-3.5 w-3.5" /> {tx('metrics.walletBalance')}
                   </p>
                   <p className="mt-1 text-2xl font-bold tabular-nums">{fmtInt(creditNumber)}</p>
-                  <p className="text-[11px] text-muted-foreground">Toman remaining</p>
+                  <p className="text-[11px] text-muted-foreground">{tx('metrics.tomanRemaining')}</p>
                 </div>
               )}
             </div>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 p-5">
-            {miniStat('Tokens Processed', fmtTokens(t.tokens), `${completionShare.toFixed(0)}% output`)}
-            {miniStat('Books', fmtInt(t.books), 'translated')}
-            {miniStat('Chapters', fmtInt(t.chapters), 'translated')}
-            {miniStat('Avg Cost / Chapter', fmtInt(avgPerChapter), 'Toman')}
-            {miniStat('Avg Tokens / Chapter', fmtTokens(avgTokensPerChapter), 'tokens')}
-            {miniStat('Runtime', fmtDuration(t.duration_seconds), `~${fmtInt(costPer1M)} T per 1M tokens`)}
+            {miniStat(tx('metrics.tokensProcessed'), fmtTokens(t.tokens), tx('metrics.output', { pct: completionShare.toFixed(0) }))}
+            {miniStat(tx('metrics.books'), fmtInt(t.books), tx('metrics.translatedSub'))}
+            {miniStat(tx('metrics.chapters'), fmtInt(t.chapters), tx('metrics.translatedSub'))}
+            {miniStat(tx('metrics.avgCostPerChapter'), fmtInt(avgPerChapter), tx('metrics.toman'))}
+            {miniStat(tx('metrics.avgTokensPerChapter'), fmtTokens(avgTokensPerChapter), tx('metrics.tokensLabel'))}
+            {miniStat(tx('metrics.runtime'), fmtDuration(t.duration_seconds), tx('metrics.tPer1M', { n: fmtInt(costPer1M) }))}
           </div>
         </CardContent>
       </Card>
@@ -277,17 +282,17 @@ export const MetricsView: React.FC = () => {
         <Card className="rounded-3xl border-0">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
-              <PieChart className="h-4 w-4 text-primary" /> Token Composition
+              <PieChart className="h-4 w-4 text-primary" /> {tx('metrics.tokenComposition')}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <Donut
               centerValue={fmtTokens(t.tokens)}
-              centerLabel="tokens"
+              centerLabel={tx('metrics.tokensLabel')}
               segments={[
-                { label: 'Prompt', value: t.prompt_tokens, color: TOKEN_COLORS[0] },
-                { label: 'Completion', value: t.completion_tokens, color: TOKEN_COLORS[1] },
-                { label: 'Reasoning', value: t.reasoning_tokens, color: TOKEN_COLORS[2] },
+                { label: tx('metrics.prompt'), value: t.prompt_tokens, color: TOKEN_COLORS[0] },
+                { label: tx('metrics.completion'), value: t.completion_tokens, color: TOKEN_COLORS[1] },
+                { label: tx('metrics.reasoning'), value: t.reasoning_tokens, color: TOKEN_COLORS[2] },
               ]}
             />
           </CardContent>
@@ -296,19 +301,19 @@ export const MetricsView: React.FC = () => {
         <Card className="rounded-3xl border-0">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-primary" /> Cost by Model
+              <BarChart3 className="h-4 w-4 text-primary" /> {tx('metrics.costByModel')}
             </CardTitle>
           </CardHeader>
           <CardContent>
             {data.models.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">No data yet.</p>
+              <p className="text-sm text-muted-foreground py-8 text-center">{tx('metrics.noData')}</p>
             ) : (
               <div className="space-y-4">
                 {data.models.map((m, i) => {
                   const share = grandCost > 0 ? (m.cost_toman / grandCost) * 100 : 0
                   const color = MODEL_COLORS[i % MODEL_COLORS.length]
                   return (
-                    <div key={m.model} title={`${fmtInt(m.chapters)} chapters · ${fmtTokens(m.tokens)} tokens`}>
+                    <div key={m.model} title={tx('metrics.modelTitle', { n: fmtInt(m.chapters), t: fmtTokens(m.tokens) })}>
                       <div className="flex items-center justify-between text-xs mb-1.5">
                         <span className="font-medium truncate max-w-[55%]">{m.model}</span>
                         <span className="text-muted-foreground tabular-nums">
@@ -322,7 +327,7 @@ export const MetricsView: React.FC = () => {
                         />
                       </div>
                       <p className="text-[10px] text-muted-foreground mt-1 tabular-nums">
-                        {fmtInt(m.books)} book{m.books === 1 ? '' : 's'} · {fmtInt(m.chapters)} chapters · {fmtTokens(m.tokens)} tokens
+                        {tx('metrics.modelSub', { books: fmtInt(m.books), chapters: fmtInt(m.chapters), tokens: fmtTokens(m.tokens) })}
                       </p>
                     </div>
                   )
@@ -335,12 +340,12 @@ export const MetricsView: React.FC = () => {
         <Card className="rounded-3xl border-0">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Layers className="h-4 w-4 text-primary" /> Top Books by Cost
+              <Layers className="h-4 w-4 text-primary" /> {tx('metrics.topBooks')}
             </CardTitle>
           </CardHeader>
           <CardContent>
             {topBooks.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">No data yet.</p>
+              <p className="text-sm text-muted-foreground py-8 text-center">{tx('metrics.noData')}</p>
             ) : (
               <div className="flex items-end gap-2 h-44 pt-2">
                 {topBooks.map((b, i) => {
@@ -353,7 +358,7 @@ export const MetricsView: React.FC = () => {
                       <div
                         className="w-full rounded-t-lg bg-primary/70 group-hover:bg-primary transition-all duration-500"
                         style={{ height: `${h}%` }}
-                        title={`${b.title}: ${fmtInt(b.cost_toman)} Toman`}
+                        title={tx('metrics.bookTitle', { title: b.title, cost: fmtInt(b.cost_toman) })}
                       />
                       <span className="text-[9px] text-muted-foreground truncate max-w-full w-full text-center" title={b.title}>
                         {b.title.length > 10 ? `${b.title.slice(0, 9)}…` : b.title}
@@ -371,26 +376,26 @@ export const MetricsView: React.FC = () => {
       <Card className="rounded-3xl border-0">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
-            <BookOpen className="h-4 w-4 text-primary" /> Books <span className="text-muted-foreground font-normal">({fmtInt(data.books.length)})</span>
+            <BookOpen className="h-4 w-4 text-primary" /> {tx('metrics.booksTitle')} <span className="text-muted-foreground font-normal">({fmtInt(data.books.length)})</span>
           </CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           {data.books.length === 0 ? (
             <p className="text-sm text-muted-foreground py-10 text-center">
-              No metrics yet — translate a book and its costs will appear here.
+              {tx('metrics.noMetrics')}
             </p>
           ) : (
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-muted-foreground text-[11px] uppercase tracking-wider border-b border-border">
                   <th className="py-2.5 pr-3 font-medium w-8">#</th>
-                  <th className="py-2.5 pr-4 font-medium">Book</th>
-                  <th className="py-2.5 pr-4 font-medium text-right">Chapters</th>
-                  <th className="py-2.5 pr-4 font-medium text-right">Tokens</th>
-                  <th className="py-2.5 pr-4 font-medium text-right">Share</th>
-                  <th className="py-2.5 pr-4 font-medium text-right">Cost (Toman)</th>
-                  <th className="py-2.5 pr-4 font-medium text-right">At Current Rate</th>
-                  <th className="py-2.5 font-medium text-right">Updated</th>
+                  <th className="py-2.5 pr-4 font-medium">{tx('metrics.colBook')}</th>
+                  <th className="py-2.5 pr-4 font-medium text-right">{tx('metrics.colChapters')}</th>
+                  <th className="py-2.5 pr-4 font-medium text-right">{tx('metrics.colTokens')}</th>
+                  <th className="py-2.5 pr-4 font-medium text-right">{tx('metrics.colShare')}</th>
+                  <th className="py-2.5 pr-4 font-medium text-right">{tx('metrics.colCost')}</th>
+                  <th className="py-2.5 pr-4 font-medium text-right">{tx('metrics.colCurrentRate')}</th>
+                  <th className="py-2.5 font-medium text-right">{tx('metrics.colUpdated')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -420,7 +425,7 @@ export const MetricsView: React.FC = () => {
                 })}
                 <tr className="font-semibold bg-secondary/20">
                   <td className="py-3 pr-3 rounded-s-2xl" />
-                  <td className="py-3 pr-4">Total</td>
+                  <td className="py-3 pr-4">{tx('metrics.total')}</td>
                   <td className="py-3 pr-4 text-right tabular-nums">{fmtInt(t.chapters)}</td>
                   <td className="py-3 pr-4 text-right tabular-nums">{fmtTokens(t.tokens)}</td>
                   <td className="py-3 pr-4" />
@@ -438,7 +443,7 @@ export const MetricsView: React.FC = () => {
       <Card className="rounded-3xl border-0">
         <CardContent className="p-5 flex flex-wrap items-end gap-4">
           <div>
-            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Exchange Rate (Toman / USD)</p>
+            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{tx('metrics.exchangeRate')}</p>
             <input
               type="number"
               className="mt-1.5 h-10 w-52 rounded-2xl bg-secondary/40 px-4 text-sm font-semibold tabular-nums outline-none focus:ring-2 ring-primary/40 transition"
@@ -447,23 +452,22 @@ export const MetricsView: React.FC = () => {
               onChange={(e) => setRateInput(e.target.value)}
             />
           </div>
-          <Button size="sm" className="h-10 px-5" onClick={saveRate} loading={savingRate}>Save Rate</Button>
+          <Button size="sm" className="h-10 px-5" onClick={saveRate} loading={savingRate}>{tx('metrics.saveRate')}</Button>
           <Button
             size="sm"
             className="h-10 px-4"
             onClick={toggleAutoRate}
             loading={savingRate}
           >
-            {data?.rate_info?.auto ? 'Auto Rate: ON' : 'Auto Rate: OFF'}
+            {data?.rate_info?.auto ? tx('metrics.autoRateOn') : tx('metrics.autoRateOff')}
           </Button>
           {data?.rate_info?.auto && data.rate_info.auto_at ? (
             <span className="text-[11px] text-muted-foreground self-center tabular-nums">
-              Last fetch: {fmtDate(data.rate_info.auto_at)}
+              {tx('metrics.lastFetch', { date: fmtDate(data.rate_info.auto_at) })}
             </span>
           ) : null}
           <p className="text-[11px] text-muted-foreground self-center max-w-md leading-relaxed">
-            Applies to new translations and the "At Current Rate" column. Each book permanently
-            keeps the rate of the day it was translated.
+            {tx('metrics.rateNote')}
           </p>
         </CardContent>
       </Card>
@@ -472,7 +476,7 @@ export const MetricsView: React.FC = () => {
         <Card className="rounded-3xl border-0">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Wallet className="h-4 w-4 text-primary" /> Provider Credit (raw)
+              <Wallet className="h-4 w-4 text-primary" /> {tx('metrics.providerCredit')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -484,10 +488,7 @@ export const MetricsView: React.FC = () => {
       )}
 
       <p className="text-[11px] text-muted-foreground leading-relaxed px-1">
-        Accuracy note: totals are recomputed from chapter-level token/cost records stored in each
-        book's metrics.json (not from stored book totals). "Cost (Toman)" was recorded on each
-        book's translation day; "At Current Rate" converts the same USD amount using today's rate
-        of {fmtInt(data.current_exchange_rate)} Toman/USD.
+        {tx('metrics.accuracyNote', { rate: fmtInt(data.current_exchange_rate) })}
       </p>
     </div>
   )

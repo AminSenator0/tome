@@ -29,6 +29,7 @@ import { Badge } from '../components/ui/Badge'
 import { Select } from '../components/ui/Select'
 import { Checkbox } from '../components/ui/Checkbox'
 import { MermaidGraph } from '../components/ui/MermaidGraph'
+import { useI18n } from '../lib/i18n'
 
 interface BookDetailViewProps {
   bookFolder: string
@@ -39,6 +40,7 @@ interface BookDetailViewProps {
 type TabType = 'overview' | 'reader' | 'glossary' | 'graph' | 'images' | 'metrics'
 
 export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBack, isDark = true }) => {
+  const { t, tGenre, formatNumber } = useI18n()
   const [book, setBook] = useState<BookDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -111,37 +113,37 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
   const runChapterTranslation = async (slugs: string[]) => {
     if (slugs.length === 0 || !book) return
     setTranslatingChapters(true)
-    setTransStatusMsg(`Initiating translation for ${slugs.length} chapter(s)...`)
+    setTransStatusMsg(t('book.transInit', { n: slugs.length }))
     try {
       const res = await Api.runPipeline({
         file_path: `output/${bookFolder}/original/book.md`,
         translate: true,
         chapters: slugs.join(','),
       })
-      setTransStatusMsg('Translation task launched in background...')
+      setTransStatusMsg(t('book.transLaunched'))
       const ev = new EventSource(`/api/pipeline/events/${res.task_id}`)
       ev.onmessage = (e) => {
         try {
           const d = JSON.parse(e.data)
           if (d.event === 'chapter_translation_complete') {
             const ch = d.data?.chapter || d.data?.slug || ''
-            setTransStatusMsg(`Translated: ${ch}`)
+            setTransStatusMsg(t('book.translatedMsg', { ch }))
           } else if (d.event === 'pipeline_complete' || d.status === 'completed' || d.data?.status === 'completed') {
             ev.close()
             setTranslatingChapters(false)
-            setTransStatusMsg('Chapters translated!')
+            setTransStatusMsg(t('book.transDone'))
             loadBook()
             Api.getBookQuality(bookFolder).then(setQuality).catch(() => {})
             setTimeout(() => setTransStatusMsg(null), 4000)
           } else if (d.event === 'pipeline_cancelled') {
             ev.close()
             setTranslatingChapters(false)
-            setTransStatusMsg('Translation cancelled.')
+            setTransStatusMsg(t('book.transCancelled'))
             loadBook()
           } else if (d.event === 'error' || d.status === 'failed') {
             ev.close()
             setTranslatingChapters(false)
-            setTransStatusMsg(`Translation error: ${d.data?.error || d.error || 'Failed'}`)
+            setTransStatusMsg(t('book.transError', { msg: d.data?.error || d.error || 'Failed' }))
             loadBook()
           }
         } catch {}
@@ -153,7 +155,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
       }
     } catch (err: any) {
       setTranslatingChapters(false)
-      setTransStatusMsg(`Error: ${err.message}`)
+      setTransStatusMsg(t('book.errorPrefix', { msg: err.message }))
     }
   }
 
@@ -182,7 +184,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
         setSelectedChapterSlug(data.chapters[0].slug)
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to load book')
+      setError(err.message || t('book.loadFail'))
     } finally {
       setLoading(false)
     }
@@ -195,7 +197,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
       const data = await Api.getChapter(bookFolder, slug)
       setChapterContent(data)
     } catch (err: any) {
-      alert(err.message || 'Failed to load chapter content')
+      alert(err.message || t('book.loadChapterFail'))
     } finally {
       setLoadingChapter(false)
     }
@@ -264,7 +266,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
       setGlossarySaved(true)
       setTimeout(() => setGlossarySaved(false), 2000)
     } catch (err: any) {
-      alert(err.message || 'Failed to save glossary')
+      alert(err.message || t('book.saveGlossaryFail'))
     } finally {
       setSavingGlossary(false)
     }
@@ -277,7 +279,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
       setGlossarySaved(true)
       setTimeout(() => setGlossarySaved(false), 2000)
     } catch (err: any) {
-      alert(err.message || 'Failed to save glossary')
+      alert(err.message || t('book.saveGlossaryFail'))
     } finally {
       setSavingGlossary(false)
     }
@@ -291,7 +293,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
       setCompileMsg(`Compiled volume successfully!`)
       loadBook()
     } catch (err: any) {
-      alert(err.message || 'Failed to compile manuscript')
+      alert(err.message || t('book.compileFail'))
     } finally {
       setCompiling(false)
     }
@@ -301,7 +303,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
     return (
       <div className="flex flex-col items-center justify-center p-16 text-muted-foreground">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent mb-2" />
-        <span className="text-xs">Loading manuscript volume...</span>
+        <span className="text-xs">{t('book.loading')}</span>
       </div>
     )
   }
@@ -309,9 +311,9 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
   if (error || !book) {
     return (
       <div className="p-8 text-center space-y-4">
-        <div className="text-destructive font-medium text-sm">{error || 'Book not found'}</div>
+        <div className="text-destructive font-medium text-sm">{error || t('book.notFound')}</div>
         <Button onClick={onBack} size="sm">
-          Return to Library
+{t('book.returnToLibrary')}
         </Button>
       </div>
     )
@@ -321,12 +323,12 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
   const metrics = book.metrics || {}
 
   const navTabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
-    { id: 'overview', label: 'Overview & Chapters', icon: <BookOpen className="h-4 w-4" /> },
-    { id: 'reader', label: 'Chapter Reader', icon: <FileText className="h-4 w-4" /> },
-    { id: 'glossary', label: 'Entity Glossary', icon: <Users className="h-4 w-4" /> },
-    { id: 'graph', label: 'Character Graph', icon: <GitGraph className="h-4 w-4" /> },
-    { id: 'images', label: `Images (${book.images.length})`, icon: <ImageIcon className="h-4 w-4" /> },
-    { id: 'metrics', label: 'Metrics', icon: <BarChart3 className="h-4 w-4" /> },
+    { id: 'overview', label: t('book.tabOverview'), icon: <BookOpen className="h-4 w-4" /> },
+    { id: 'reader', label: t('book.tabReader'), icon: <FileText className="h-4 w-4" /> },
+    { id: 'glossary', label: t('book.tabGlossary'), icon: <Users className="h-4 w-4" /> },
+    { id: 'graph', label: t('book.tabGraph'), icon: <GitGraph className="h-4 w-4" /> },
+    { id: 'images', label: t('book.tabImages', { n: book.images.length }), icon: <ImageIcon className="h-4 w-4" /> },
+    { id: 'metrics', label: t('book.tabMetrics'), icon: <BarChart3 className="h-4 w-4" /> },
   ]
 
   const isAllChecked = book.chapters.length > 0 && checkedChapters.size === book.chapters.length
@@ -336,7 +338,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
       {/* Top Header & Action Controls with reduced bottom spacing */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-0.5">
         <div className="flex items-center gap-3">
-          <Button variant="secondary" size="icon" onClick={onBack} title="Back to Library">
+          <Button variant="secondary" size="icon" onClick={onBack} title={t('book.backToLibrary')}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
@@ -345,13 +347,13 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                 {meta.title || book.folder.replace(/_/g, ' ')}
               </h1>
               <Badge variant="outline" className="capitalize">
-                {meta.genre || 'General'}
+                {tGenre(meta.genre)}
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {meta.authors && meta.authors.length > 0 ? meta.authors.join(', ') : 'Unknown Author'}
+              {meta.authors && meta.authors.length > 0 ? meta.authors.join(', ') : t('book.unknownAuthor')}
               {meta.year ? ` • ${meta.year}` : ''}
-              {meta.reading_time ? ` • Est. ${meta.reading_time}` : ''}
+              {meta.reading_time ? t('book.estReading', { time: meta.reading_time }) : ''}
             </p>
           </div>
         </div>
@@ -362,20 +364,20 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
             variant="action"
             onClick={() => setShowExportHub(true)}
             className="flex-1 h-10 text-xs font-medium gap-1.5 rounded-full justify-center"
-            title="Download or bundle all manuscript formats"
+            title={t('book.exportHubTitle')}
           >
             <FolderDown className="h-3.5 w-3.5" />
-            <span>Export Hub</span>
+            <span>{t('book.exportHub')}</span>
           </Button>
           <Button
             variant="secondary"
             onClick={handleCompile}
             loading={compiling}
             className="flex-1 h-10 text-xs font-medium gap-1.5 rounded-full justify-center"
-            title="Re-compile Word and PDF documents from translated chapters"
+            title={t('book.compileTitle')}
           >
             <Layers className="h-3.5 w-3.5" strokeWidth={1.5} />
-            <span>Compile Volume</span>
+            <span>{t('book.compileVolume')}</span>
           </Button>
         </div>
 
@@ -385,10 +387,10 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
             variant="action"
             onClick={() => setShowExportHub(true)}
             className="h-10 px-4 text-xs font-medium gap-1.5 rounded-full shrink-0"
-            title="Download or bundle all manuscript formats"
+            title={t('book.exportHubTitle')}
           >
             <FolderDown className="h-3.5 w-3.5" />
-            <span>Export Hub</span>
+            <span>{t('book.exportHub')}</span>
           </Button>
 
           {book.has_docx && (
@@ -396,7 +398,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
               href={`/api/books/${bookFolder}/download/docx`}
               download
               className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full bg-sky-500/15 text-sky-600 dark:text-sky-400 hover:bg-sky-500/25 transition-colors font-medium text-xs shrink-0"
-              title="Download Microsoft Word Document"
+              title={t('book.downloadDocxTitle')}
             >
               <FileDown className="h-3.5 w-3.5" strokeWidth={1.5} />
               <span>Docx</span>
@@ -407,7 +409,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
               href={`/api/books/${bookFolder}/download/pdf`}
               download
               className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 hover:bg-rose-500/25 transition-colors font-medium text-xs shrink-0"
-              title="Download Publication-Ready PDF"
+              title={t('book.downloadPdfTitle')}
             >
               <FileDown className="h-3.5 w-3.5" strokeWidth={1.5} />
               <span>Pdf</span>
@@ -418,10 +420,10 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
               href={`/api/books/${bookFolder}/download/original`}
               download
               className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25 transition-colors font-medium text-xs shrink-0"
-              title="Download Original Source File"
+              title={t('book.downloadOriginalTitle')}
             >
               <FileDown className="h-3.5 w-3.5" strokeWidth={1.5} />
-              <span>Original</span>
+              <span>{t('book.original')}</span>
             </a>
           )}
 
@@ -430,10 +432,10 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
             onClick={handleCompile}
             loading={compiling}
             className="h-10 px-4 text-xs font-medium gap-1.5 rounded-full shrink-0"
-            title="Re-compile Word and PDF documents from translated chapters"
+            title={t('book.compileTitle')}
           >
             <Layers className="h-3.5 w-3.5" strokeWidth={1.5} />
-            <span>Compile Volume</span>
+            <span>{t('book.compileVolume')}</span>
           </Button>
         </div>
       </div>
@@ -475,7 +477,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <FolderDown className="h-5 w-5 text-primary" />
-                <h3 className="text-base font-semibold text-foreground">Unified Export Hub</h3>
+                <h3 className="text-base font-semibold text-foreground">{t('book.exportHubModal')}</h3>
               </div>
               <button
                 type="button"
@@ -487,12 +489,12 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Package and download all generated book artifacts in standard formats.
+              {t('book.exportHubDesc')}
             </p>
 
             <div className="space-y-3">
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
-                Available Artifacts
+{t('book.availableArtifacts')}
               </span>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 {book.has_docx && (
@@ -501,7 +503,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                     download
                     className="flex items-center justify-between p-3 rounded-2xl bg-sky-500/15 text-sky-600 dark:text-sky-400 font-medium"
                   >
-                    <span>Word (Docx)</span>
+                    <span>{t('book.artDocx')}</span>
                     <FileDown className="h-4 w-4" />
                   </a>
                 )}
@@ -511,7 +513,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                     download
                     className="flex items-center justify-between p-3 rounded-2xl bg-rose-500/15 text-rose-600 dark:text-rose-400 font-medium"
                   >
-                    <span>Print Pdf</span>
+                    <span>{t('book.artPdf')}</span>
                     <FileDown className="h-4 w-4" />
                   </a>
                 )}
@@ -521,7 +523,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                     download
                     className="flex items-center justify-between p-3 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 font-medium"
                   >
-                    <span>Original Source</span>
+                    <span>{t('book.artOriginal')}</span>
                     <FileDown className="h-4 w-4" />
                   </a>
                 )}
@@ -531,7 +533,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                     download
                     className="flex items-center justify-between p-3 rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium"
                   >
-                    <span>Images ZIP</span>
+                    <span>{t('book.artImages')}</span>
                     <FileDown className="h-4 w-4" />
                   </a>
                 )}
@@ -540,22 +542,22 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
 
             <div className="pt-3 border-t border-muted/30 space-y-3">
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
-                Export Options
+{t('book.exportOptions')}
               </span>
               <Input
-                label="Watermark Text (Optional)"
-                placeholder="e.g. Confidential Draft"
+                label={t('book.watermark')}
+                placeholder={t('book.watermarkPh')}
                 value={exportWatermark}
                 onChange={(e) => setExportWatermark(e.target.value)}
               />
               <Select
-                label="Target Font Size"
+                label={t('book.fontSize')}
                 value={exportFontSize}
                 onChange={(e) => setExportFontSize(e.target.value)}
               >
-                <option value="11pt">11pt Compact</option>
-                <option value="12pt">12pt Standard Book</option>
-                <option value="13pt">13pt Large Print</option>
+                <option value="11pt">{t('book.fsCompact')}</option>
+                <option value="12pt">{t('book.fsStandard')}</option>
+                <option value="13pt">{t('book.fsLarge')}</option>
               </Select>
             </div>
 
@@ -566,7 +568,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                 className="w-full flex items-center justify-center gap-2 h-11 px-5 rounded-full bg-primary text-primary-foreground text-xs font-medium transition-opacity hover:opacity-90"
               >
                 <Archive className="h-4 w-4" />
-                <span>Download All as Unified ZIP Archive</span>
+                <span>{t('book.downloadAll')}</span>
               </a>
             </div>
           </div>
@@ -593,7 +595,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
             <div className="w-full max-h-[65vh] overflow-hidden rounded-2xl bg-secondary/30 flex items-center justify-center p-2">
               <img
                 src={activeLightboxImg.url}
-                alt={`Page ${activeLightboxImg.page_num}`}
+                alt={t('book.page', { n: activeLightboxImg.page_num })}
                 className="max-h-[60vh] max-w-full object-contain rounded-lg shadow-sm"
               />
             </div>
@@ -605,7 +607,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                 className="inline-flex items-center gap-2 h-10 px-5 rounded-full bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity"
               >
                 <Download className="h-4 w-4" />
-                <span>Download Image</span>
+                <span>{t('book.downloadImage')}</span>
               </a>
             </div>
           </div>
@@ -620,12 +622,12 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
             <div className="lg:col-span-2">
               <Card className="h-full">
                 <CardHeader>
-                  <CardTitle>Synopsis & Overview</CardTitle>
-                  <CardDescription>Synthesized narrative abstract and thematic keywords</CardDescription>
+                  <CardTitle>{t('book.synopsisTitle')}</CardTitle>
+                  <CardDescription>{t('book.synopsisDesc')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4 text-xs">
                   <p className="leading-relaxed text-foreground/90">
-                    {meta.synopsis || 'No synopsis extracted for this manuscript volume.'}
+                    {meta.synopsis || t('book.noSynopsis')}
                   </p>
                   {meta.keywords && meta.keywords.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 pt-2">
@@ -643,28 +645,28 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
             <div className="lg:col-span-1">
               <Card className="h-full">
                 <CardHeader>
-                  <CardTitle>Volume Metadata</CardTitle>
+                  <CardTitle>{t('book.volumeMetadata')}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3 text-xs">
                   <div>
-                    <span className="text-muted-foreground block text-[11px]">Primary Title</span>
-                    <span className="font-medium text-foreground">{meta.title || 'N/A'}</span>
+                    <span className="text-muted-foreground block text-[11px]">{t('book.metaTitle')}</span>
+                    <span className="font-medium text-foreground">{meta.title || t('common.na')}</span>
                   </div>
                   <div>
-                    <span className="text-muted-foreground block text-[11px]">Authors</span>
-                    <span className="font-medium text-foreground">{meta.authors?.join(', ') || 'N/A'}</span>
+                    <span className="text-muted-foreground block text-[11px]">{t('book.metaAuthors')}</span>
+                    <span className="font-medium text-foreground">{meta.authors?.join(', ') || t('common.na')}</span>
                   </div>
                   <div>
-                    <span className="text-muted-foreground block text-[11px]">Resolved Genre</span>
-                    <span className="font-medium text-foreground capitalize">{meta.genre || 'General'}</span>
+                    <span className="text-muted-foreground block text-[11px]">{t('book.metaGenre')}</span>
+                    <span className="font-medium text-foreground capitalize">{tGenre(meta.genre)}</span>
                   </div>
                   <div>
-                    <span className="text-muted-foreground block text-[11px]">Publication Year</span>
-                    <span className="font-medium text-foreground">{meta.year || 'N/A'}</span>
+                    <span className="text-muted-foreground block text-[11px]">{t('book.metaYear')}</span>
+                    <span className="font-medium text-foreground">{meta.year || t('common.na')}</span>
                   </div>
                   <div>
-                    <span className="text-muted-foreground block text-[11px]">Est. Reading Time</span>
-                    <span className="font-medium text-foreground">{meta.reading_time || 'N/A'}</span>
+                    <span className="text-muted-foreground block text-[11px]">{t('book.metaReading')}</span>
+                    <span className="font-medium text-foreground">{meta.reading_time || t('common.na')}</span>
                   </div>
                 </CardContent>
               </Card>
@@ -675,8 +677,8 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
           <Card>
             <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3">
               <div className="text-left">
-                <CardTitle>Chapter Index ({book.chapters.length})</CardTitle>
-                <CardDescription>Select chapters to batch translate</CardDescription>
+                <CardTitle>{t('book.chapterIndex', { n: book.chapters.length })}</CardTitle>
+                <CardDescription>{t('book.chapterIndexDesc')}</CardDescription>
               </div>
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
                 <Button
@@ -685,7 +687,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                   onClick={toggleAllChapters}
                   className="h-9 text-xs font-medium px-4 rounded-full w-full sm:w-auto justify-center whitespace-nowrap"
                 >
-                  <span>{isAllChecked ? 'Deselect All' : 'Select All'}</span>
+                  <span>{isAllChecked ? t('book.deselectAll') : t('book.selectAll')}</span>
                 </Button>
                 <Button
                   size="sm"
@@ -695,7 +697,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                   loading={translatingChapters}
                   className="h-9 text-xs font-medium px-4 rounded-full w-full sm:w-auto justify-center whitespace-nowrap"
                 >
-                  <span>Translate Selected ({checkedChapters.size})</span>
+                  <span>{t('book.translateSelected', { n: checkedChapters.size })}</span>
                 </Button>
                 <Button
                   size="sm"
@@ -705,7 +707,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                   loading={translatingChapters}
                   className="h-9 text-xs font-medium px-4 rounded-full w-full sm:w-auto justify-center whitespace-nowrap"
                 >
-                  <span>Translate Remaining ({book.chapters.filter((c) => !c.is_translated).length})</span>
+                  <span>{t('book.translateRemaining', { n: book.chapters.filter((c) => !c.is_translated).length })}</span>
                 </Button>
               </div>
             </CardHeader>
@@ -728,7 +730,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                             {idx + 1}. {ch.slug}
                           </span>
                           <span className="text-[11px] text-muted-foreground block">
-                            {ch.word_count.toLocaleString()} words
+                            {t('book.words', { n: formatNumber(ch.word_count) })}
                           </span>
                         </div>
                       </div>
@@ -741,7 +743,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                               : 'bg-secondary text-muted-foreground'
                           }`}
                         >
-                          {ch.is_translated ? 'Translated' : 'Pending'}
+                          {ch.is_translated ? t('book.translated') : t('book.pending')}
                         </div>
                         {ch.is_translated && (quality[ch.slug] || quality[`${ch.slug}.md`]) && (
                           (() => {
@@ -770,7 +772,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                             onClick={() => handleRetryChapter(ch.slug)}
                             className="h-8 text-xs px-3.5 rounded-full"
                           >
-                            Retry
+{t('common.retry')}
                           </Button>
                         )}
                         <Button
@@ -782,7 +784,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                           }}
                           className="h-8 text-xs px-3.5 rounded-full"
                         >
-                          Read
+{t('book.read')}
                         </Button>
                       </div>
                     </div>
@@ -819,7 +821,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                     </span>
                     {!active && ch.is_translated && (
                       <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                        Done
+{t('book.done')}
                       </span>
                     )}
                   </button>
@@ -831,19 +833,19 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
           <div className="lg:col-span-3 space-y-4">
             {loadingChapter ? (
               <div className="flex items-center justify-center p-16 text-muted-foreground text-xs">
-                Loading chapter text...
+                {t('book.loadingChapter')}
               </div>
             ) : chapterContent ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Card>
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-sm">Original</CardTitle>
-                    <CardDescription>{selectedChapterSlug} Source</CardDescription>
+                    <CardTitle className="text-sm">{t('book.original')}</CardTitle>
+                    <CardDescription>{t('book.sourceSuffix', { slug: selectedChapterSlug })}</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="text-xs sm:text-sm font-sans leading-relaxed max-h-[600px] overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden pr-4 text-foreground/90 select-text prose dark:prose-invert max-w-none">
                       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
-                        {chapterContent.original || 'No source content found.'}
+                        {chapterContent.original || t('book.noSource')}
                       </ReactMarkdown>
                     </div>
                   </CardContent>
@@ -851,8 +853,8 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
 
                 <Card>
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-sm">Translation</CardTitle>
-                    <CardDescription>{selectedChapterSlug} Output</CardDescription>
+                    <CardTitle className="text-sm">{t('book.translation')}</CardTitle>
+                    <CardDescription>{t('book.outputSuffix', { slug: selectedChapterSlug })}</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div
@@ -860,7 +862,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                       className="text-sm font-persian leading-relaxed max-h-[600px] overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden pr-4 text-foreground select-text prose dark:prose-invert max-w-none"
                     >
                       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
-                        {chapterContent.translated || 'Not translated yet. Select and click Translate Selected.'}
+                        {chapterContent.translated || t('book.notTranslatedYet')}
                       </ReactMarkdown>
                     </div>
                   </CardContent>
@@ -868,7 +870,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
               </div>
             ) : (
               <div className="p-12 text-center text-xs text-muted-foreground bg-card rounded-3xl">
-                Select a chapter from the list to read bilingual contents.
+                {t('book.selectChapterHint')}
               </div>
             )}
           </div>
@@ -880,9 +882,9 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
         <Card>
           <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
             <div className="text-left space-y-0.5">
-              <CardTitle>Named Entity Glossary</CardTitle>
+              <CardTitle>{t('book.glossaryTitle')}</CardTitle>
               <CardDescription>
-                Bilingual glossary mapping for extracted characters, locations, and key concepts
+                {t('book.glossaryDesc')}
               </CardDescription>
             </div>
 
@@ -897,7 +899,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                 }`}
               >
                 <Eye className="h-3.5 w-3.5" />
-                <span>Preview</span>
+                <span>{t('common.preview')}</span>
               </button>
               <button
                 type="button"
@@ -909,7 +911,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                 }`}
               >
                 <Edit3 className="h-3.5 w-3.5" />
-                <span>Editor</span>
+                <span>{t('common.editor')}</span>
               </button>
               <button
                 type="button"
@@ -921,7 +923,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                 }`}
               >
                 <Code className="h-3.5 w-3.5" />
-                <span>Raw Data</span>
+                <span>{t('common.rawData')}</span>
               </button>
             </div>
           </CardHeader>
@@ -978,27 +980,27 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <Input
-                    placeholder="Search terms..."
+                    placeholder={t('book.searchTerms')}
                     value={glossarySearch}
                     onChange={(e) => setGlossarySearch(e.target.value)}
                     className="h-9 w-64 text-xs"
                   />
                   <Button size="sm" variant="secondary" onClick={() => setGlossaryRows((prev) => [...prev, { canonical: '', aliases: '', translation: '', confidence: '' }])}>
-                    + Add Row
+{t('book.addRow')}
                   </Button>
                   <Button size="sm" variant="secondary" onClick={mergeDuplicateRows}>
-                    Merge Duplicates
+{t('book.mergeDuplicates')}
                   </Button>
-                  <span className="text-[11px] text-muted-foreground ms-auto tabular-nums">{glossaryRows.length} rows</span>
+                  <span className="text-[11px] text-muted-foreground ms-auto tabular-nums">{t('common.rows', { n: glossaryRows.length })}</span>
                 </div>
                 <div className="rounded-2xl overflow-hidden bg-secondary/30 max-h-[520px] overflow-y-auto custom-scrollbar">
                   <table className="w-full text-xs">
                     <thead className="bg-secondary sticky top-0">
                       <tr className="text-left text-muted-foreground">
-                        <th className="p-2.5 font-medium">Canonical Term</th>
-                        <th className="p-2.5 font-medium">Aliases</th>
-                        <th className="p-2.5 font-medium">Term Translation</th>
-                        <th className="p-2.5 font-medium w-24">Confidence</th>
+                        <th className="p-2.5 font-medium">{t('book.colCanonical')}</th>
+                        <th className="p-2.5 font-medium">{t('book.colAliases')}</th>
+                        <th className="p-2.5 font-medium">{t('book.colTranslation')}</th>
+                        <th className="p-2.5 font-medium w-24">{t('book.colConfidence')}</th>
                         <th className="p-2.5 w-10" />
                       </tr>
                     </thead>
@@ -1024,7 +1026,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                                 type="button"
                                 onClick={() => setGlossaryRows((prev) => prev.filter((_, j) => j !== i))}
                                 className="h-7 w-7 rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 border-0 cursor-pointer inline-flex items-center justify-center"
-                                title="Delete row"
+                                title={t('book.deleteRow')}
                               >
                                 <X className="h-3.5 w-3.5" />
                               </button>
@@ -1037,9 +1039,9 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                 </div>
                 <div className="flex items-center gap-2">
                   <Button size="sm" onClick={handleEditorSave} loading={savingGlossary}>
-                    {glossarySaved ? 'Saved!' : 'Save Glossary'}
+                    {glossarySaved ? t('common.saved') : t('book.saveGlossary')}
                   </Button>
-                  <span className="text-[11px] text-muted-foreground">Edits apply to the pipeline glossary used in translation.</span>
+                  <span className="text-[11px] text-muted-foreground">{t('book.glossaryNote')}</span>
                 </div>
               </div>
             ) : (
@@ -1051,7 +1053,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                 />
                 <div className="flex items-center gap-2">
                   <Button size="sm" onClick={handleSaveGlossary} loading={savingGlossary}>
-                    {glossarySaved ? 'Saved!' : 'Save Raw Glossary'}
+                    {glossarySaved ? t('common.saved') : t('book.saveRawGlossary')}
                   </Button>
                 </div>
               </div>
@@ -1065,9 +1067,9 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
         <Card>
           <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3">
             <div className="text-left space-y-0.5">
-              <CardTitle>Character Relationship Graph</CardTitle>
+              <CardTitle>{t('book.graphTitle')}</CardTitle>
               <CardDescription>
-                Visual diagram and semantic relationship dossiers across all book chapters
+                {t('book.graphDesc')}
               </CardDescription>
             </div>
             {book.graph_markdown && (
@@ -1082,7 +1084,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                   }`}
                 >
                   <Eye className="h-3.5 w-3.5" />
-                  <span>Preview</span>
+                  <span>{t('common.preview')}</span>
                 </button>
                 <button
                   type="button"
@@ -1094,7 +1096,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                   }`}
                 >
                   <Code className="h-3.5 w-3.5" />
-                  <span>Raw Data</span>
+                  <span>{t('common.rawData')}</span>
                 </button>
               </div>
             )}
@@ -1124,8 +1126,8 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
         <Card>
           <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3">
             <div className="text-left">
-              <CardTitle>Extracted Illustrations ({book.images.length})</CardTitle>
-              <CardDescription>Embedded raster figures and artwork extracted from manuscript</CardDescription>
+              <CardTitle>{t('book.imagesTitle', { n: book.images.length })}</CardTitle>
+              <CardDescription>{t('book.imagesDesc')}</CardDescription>
             </div>
             {book.images.length > 0 && (
               <a
@@ -1134,7 +1136,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 h-10 px-5 rounded-full bg-primary text-primary-foreground text-xs font-medium transition-opacity hover:opacity-90 whitespace-nowrap"
               >
                 <FileDown className="h-3.5 w-3.5" />
-                <span>Download ZIP</span>
+                <span>{t('book.downloadZip')}</span>
               </a>
             )}
           </CardHeader>
@@ -1162,7 +1164,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                       {hasError ? (
                         <div className="h-28 w-full flex flex-col items-center justify-center rounded-lg bg-background/50 text-muted-foreground">
                           <ImageOff className="h-6 w-6 mb-1 opacity-50" />
-                          <span className="text-[10px]">Unavailable</span>
+                          <span className="text-[10px]">{t('book.unavailable')}</span>
                         </div>
                       ) : (
                         <div className="relative overflow-hidden rounded-lg bg-background/50">
@@ -1178,7 +1180,7 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                         </div>
                       )}
                       <span className="text-[11px] text-muted-foreground block truncate mt-1.5">
-                        Page {pNum}
+                        {t('book.page', { n: pNum })}
                       </span>
                     </div>
                   )
@@ -1194,38 +1196,38 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <div className="text-left">
-              <CardTitle>Translation Execution Metrics & Cost</CardTitle>
-              <CardDescription>Accounting of tokens, duration, and translation spend</CardDescription>
+              <CardTitle>{t('book.metricsTitle')}</CardTitle>
+              <CardDescription>{t('book.metricsDesc')}</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
               <div className="p-4 rounded-2xl bg-secondary">
-                <span className="text-muted-foreground block text-[11px]">Total Time</span>
+                <span className="text-muted-foreground block text-[11px]">{t('book.mTotalTime')}</span>
                 <span className="text-lg font-semibold text-foreground mt-0.5 block">
-                  {metrics.total_duration_seconds ? `${metrics.total_duration_seconds.toFixed(1)}s` : 'N/A'}
+                  {metrics.total_duration_seconds ? `${metrics.total_duration_seconds.toFixed(1)}s` : t('common.na')}
                 </span>
               </div>
               <div className="p-4 rounded-2xl bg-secondary">
-                <span className="text-muted-foreground block text-[11px]">Total Tokens</span>
+                <span className="text-muted-foreground block text-[11px]">{t('book.mTotalTokens')}</span>
                 <span className="text-lg font-semibold text-foreground mt-0.5 block">
-                  {metrics.total_tokens ? metrics.total_tokens.toLocaleString() : 'N/A'}
+                  {metrics.total_tokens ? metrics.total_tokens.toLocaleString() : t('common.na')}
                 </span>
               </div>
               <div className="p-4 rounded-2xl bg-secondary">
-                <span className="text-muted-foreground block text-[11px]">Estimated Cost</span>
+                <span className="text-muted-foreground block text-[11px]">{t('book.mEstimatedCost')}</span>
                 <span className="text-lg font-semibold text-foreground mt-0.5 block">
                   {metrics.total_cost_toman
                     ? `${Math.round(metrics.total_cost_toman).toLocaleString()} T`
-                    : 'N/A'}
+                    : t('common.na')}
                 </span>
               </div>
               <div className="p-4 rounded-2xl bg-secondary">
-                <span className="text-muted-foreground block text-[11px]">Avg / Chapter</span>
+                <span className="text-muted-foreground block text-[11px]">{t('book.mAvgPerChapter')}</span>
                 <span className="text-lg font-semibold text-foreground mt-0.5 block">
                   {metrics.average_cost_toman_per_chapter
                     ? `${Math.round(metrics.average_cost_toman_per_chapter).toLocaleString()} T`
-                    : 'N/A'}
+                    : t('common.na')}
                 </span>
               </div>
             </div>
@@ -1235,11 +1237,11 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                 <table className="w-full text-left text-xs">
                   <thead className="bg-secondary text-muted-foreground font-medium">
                     <tr>
-                      <th className="p-3">Chapter</th>
-                      <th className="p-3 text-right">Duration</th>
-                      <th className="p-3 text-right">Tokens</th>
-                      <th className="p-3 text-right">Cost (Toman)</th>
-                      <th className="p-3 text-right">NLP Fixed</th>
+                      <th className="p-3">{t('book.mColChapter')}</th>
+                      <th className="p-3 text-right">{t('book.mColDuration')}</th>
+                      <th className="p-3 text-right">{t('book.mColTokens')}</th>
+                      <th className="p-3 text-right">{t('book.mColCost')}</th>
+                      <th className="p-3 text-right">{t('book.mColNlp')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-secondary/40">

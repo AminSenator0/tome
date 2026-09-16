@@ -24,14 +24,32 @@ import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { Checkbox } from '../components/ui/Checkbox'
 import { ChapterSelector, ChapterItem } from '../components/ui/ChapterSelector'
+import { useI18n } from '../lib/i18n'
 
 interface PipelineViewProps {
   onOpenBook: (bookFolder: string) => void
 }
 
-
+const GENRE_VALUES = [
+  'auto',
+  'fantasy',
+  'scifi',
+  'romance',
+  'thriller_mystery',
+  'horror',
+  'historical_fiction',
+  'business',
+  'self_help_psychology',
+  'health_fitness',
+  'psychology_communication',
+  'spirituality_mindset',
+  'academic_research',
+  'biography_memoir',
+  'general',
+]
 
 export const PipelineView: React.FC<PipelineViewProps> = ({ onOpenBook }) => {
+  const { t, tGenre, tStatus } = useI18n()
   const [file, setFile] = useState<File | null>(null)
   const [uploadedPath, setUploadedPath] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -103,7 +121,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onOpenBook }) => {
       )
       setUploadedPath(`output/${folder}/original/book.md`)
     } catch (err: any) {
-      alert(err.message || 'Failed to inspect book')
+      alert(err.message || t('pipeline.inspectFail'))
     }
   }
 
@@ -118,7 +136,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onOpenBook }) => {
         if (res.genre) setGenre(res.genre)
         loadExistingBooks()
       } catch (err: any) {
-        alert(err.message || 'Upload failed')
+        alert(err.message || t('pipeline.uploadFail'))
       } finally {
         setUploading(false)
       }
@@ -137,14 +155,12 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onOpenBook }) => {
         if (res.genre) setGenre(res.genre)
         loadExistingBooks()
       } catch (err: any) {
-        alert(err.message || 'Upload failed')
+        alert(err.message || t('pipeline.uploadFail'))
       } finally {
         setUploading(false)
       }
     }
   }
-
-
 
   const startPipeline = async () => {
     if (!uploadedPath) return
@@ -164,16 +180,16 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onOpenBook }) => {
 
       startPipelineMonitor(res.task_id)
     } catch (err: any) {
-      appendMonitorLog(`[ERR] Launch failed: ${err.message}`)
+      appendMonitorLog(t('pipeline.launchFailed', { msg: err.message }))
     }
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">Pipeline Studio</h1>
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">{t('nav.pipeline')}</h1>
         <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-          End-to-end manuscript processing, entity extraction, translation, and compilation
+          {t('pipeline.subtitle')}
         </p>
       </div>
 
@@ -181,8 +197,8 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onOpenBook }) => {
         <div className="lg:col-span-1 space-y-6">
           <Card>
             <CardHeader className="pb-4">
-              <CardTitle>1. Source Manuscript</CardTitle>
-              <CardDescription>Upload PDF, EPUB, MOBI, or Markdown file</CardDescription>
+              <CardTitle>{t('pipeline.sourceTitle')}</CardTitle>
+              <CardDescription>{t('pipeline.sourceDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div
@@ -198,31 +214,31 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onOpenBook }) => {
                 />
                 <UploadCloud className="h-10 w-10 text-muted-foreground/60 mb-3" />
                 <div className="text-sm font-medium text-foreground">
-                  {file ? file.name : 'Choose file or drag & drop'}
+                  {file ? file.name : t('pipeline.chooseFile')}
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">
-                  PDF, EPUB, MOBI, Markdown, TXT
+                  {t('pipeline.fileTypes')}
                 </div>
               </div>
 
               {uploading && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                  <span>Processing manuscript & extracting metadata...</span>
+                  <span>{t('pipeline.processing')}</span>
                 </div>
               )}
 
               {existingBooks.length > 0 && (
                 <div className="space-y-2 pt-2">
                   <Select
-                    label="Or Select Existing Manuscript"
+                    label={t('pipeline.selectExisting')}
                     value={selectedExisting}
                     onChange={(e) => handleSelectExistingBook(e.target.value)}
                   >
-                    <option value="">Choose from Library...</option>
+                    <option value="">{t('pipeline.chooseFromLibrary')}</option>
                     {existingBooks.map((b) => (
                       <option key={b.folder} value={b.folder}>
-                        {b.title} ({b.total_chapters} chapters)
+                        {t('pipeline.bookOption', { title: b.title, n: b.total_chapters })}
                       </option>
                     ))}
                   </Select>
@@ -243,37 +259,27 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onOpenBook }) => {
 
           <Card>
             <CardHeader className="pb-4">
-              <CardTitle>2. Run Options</CardTitle>
-              <CardDescription>Configure extraction and translation settings</CardDescription>
+              <CardTitle>{t('pipeline.optionsTitle')}</CardTitle>
+              <CardDescription>{t('pipeline.optionsDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <Select
-                label="Genre Preset"
+                label={t('pipeline.genrePreset')}
                 value={genre}
                 onChange={(e) => setGenre(e.target.value)}
               >
-                <option value="auto">Auto (Detect from text)</option>
-                <option value="fantasy">Fantasy & Adventure</option>
-                <option value="scifi">Science Fiction</option>
-                <option value="romance">Romance & Drama</option>
-                <option value="thriller_mystery">Thriller & Mystery</option>
-                <option value="horror">Horror & Supernatural</option>
-                <option value="historical_fiction">Historical Fiction</option>
-                <option value="business">Business & Economics</option>
-                <option value="self_help_psychology">Self-Help & Personal Development</option>
-                <option value="health_fitness">Health & Fitness</option>
-                <option value="psychology_communication">Psychology & Communication</option>
-                <option value="spirituality_mindset">Spirituality & Mindset</option>
-                <option value="academic_research">Academic & Research</option>
-                <option value="biography_memoir">Biography & Memoir</option>
-                <option value="general">General Literature</option>
+                {GENRE_VALUES.map((gv) => (
+                  <option key={gv} value={gv}>
+                    {tGenre(gv)}
+                  </option>
+                ))}
               </Select>
 
               <Input
-                label="Target Language"
+                label={t('pipeline.targetLanguage')}
                 value={targetLanguage}
                 onChange={(e) => setTargetLanguage(e.target.value)}
-                placeholder="e.g. Persian"
+                placeholder={t('pipeline.targetLanguagePh')}
               />
 
               <div className="space-y-2">
@@ -286,14 +292,14 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onOpenBook }) => {
                 ) : (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between px-1">
-                      <label className="text-xs font-medium text-muted-foreground">Chapter Range (Optional)</label>
+                      <label className="text-xs font-medium text-muted-foreground">{t('pipeline.chapterRange')}</label>
                       <div className="flex gap-1.5">
                         <button
                           type="button"
                           onClick={() => setChapters('all')}
                           className="px-2.5 py-0.5 rounded-full text-xs bg-secondary hover:bg-accent text-foreground font-medium transition-colors border-0"
                         >
-                          All
+                          {t('pipeline.all')}
                         </button>
                         <button
                           type="button"
@@ -314,7 +320,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onOpenBook }) => {
                     <Input
                       value={chapters}
                       onChange={(e) => setChapters(e.target.value)}
-                      placeholder="e.g. all, 5, 1-3, 1,3,5"
+                      placeholder={t('pipeline.chapterRangePh')}
                     />
                   </div>
                 )}
@@ -324,29 +330,29 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onOpenBook }) => {
                 <Checkbox
                   checked={translate}
                   onChange={(e) => setTranslate(e.target.checked)}
-                  label="Full translation"
-                  title="Translate chapters using contextual LLM agent"
+                  label={t('pipeline.fullTranslation')}
+                  title={t('pipeline.fullTranslationTitle')}
                 />
 
                 <Checkbox
                   checked={extractImages}
                   onChange={(e) => setExtractImages(e.target.checked)}
-                  label="Extract illustrations"
-                  title="Extract embedded raster figures, plates, and charts"
+                  label={t('pipeline.extractImages')}
+                  title={t('pipeline.extractImagesTitle')}
                 />
 
                 <Checkbox
                   checked={persianNlp}
                   onChange={(e) => setPersianNlp(e.target.checked)}
-                  label="NLP copyediting"
-                  title="Apply Persian orthographic normalizer and ZWNJ correction"
+                  label={t('pipeline.nlpCopyedit')}
+                  title={t('pipeline.nlpCopyeditTitle')}
                 />
 
                 <Checkbox
                   checked={skipGliner}
                   onChange={(e) => setSkipGliner(e.target.checked)}
-                  label="Skip entity model (Fast)"
-                  title="Bypass local entity model for faster LLM-only execution"
+                  label={t('pipeline.skipGliner')}
+                  title={t('pipeline.skipGlinerTitle')}
                 />
               </div>
 
@@ -358,7 +364,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onOpenBook }) => {
                 disabled={!uploadedPath || running}
                 loading={running}
               >
-                <span>Start Pipeline</span>
+                <span>{t('pipeline.start')}</span>
               </Button>
             </CardContent>
           </Card>
@@ -369,7 +375,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onOpenBook }) => {
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div className="flex items-center gap-2.5">
                 <Terminal className="h-4 w-4 text-primary" />
-                <CardTitle className="text-base">Live Execution Console</CardTitle>
+                <CardTitle className="text-base">{t('pipeline.console')}</CardTitle>
                 {mon.status !== 'idle' && (
                   <span
                     className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ${
@@ -380,7 +386,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onOpenBook }) => {
                           : 'bg-destructive/15 text-destructive'
                     }`}
                   >
-                    {mon.status}
+                    {tStatus(mon.status)}
                   </span>
                 )}
               </div>
@@ -389,13 +395,13 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onOpenBook }) => {
                   size="sm"
                   className="gap-1.5 bg-rose-500/15 text-rose-600 dark:text-rose-400 hover:bg-rose-500/25"
                   onClick={() => {
-                    if (window.confirm('Cancel this pipeline run? The current chapter will finish, then it stops.')) {
+                    if (window.confirm(t('pipeline.cancelConfirm'))) {
                       cancelPipelineTask(mon.taskId as string)
                     }
                   }}
                 >
                   <Square className="h-3.5 w-3.5" />
-                  <span>Cancel</span>
+                  <span>{t('common.cancel')}</span>
                 </Button>
               )}
             </CardHeader>
@@ -406,7 +412,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onOpenBook }) => {
               >
                 {logs.length === 0 ? (
                   <div className="text-muted-foreground/60 p-8 text-center">
-                    Awaiting pipeline execution. Logs will stream in real time.
+                    {t('pipeline.awaiting')}
                   </div>
                 ) : (
                   logs.map((line, idx) => (
@@ -421,14 +427,14 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onOpenBook }) => {
                 <div className="mt-4 p-4 rounded-2xl bg-success-light text-success flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs font-medium">
                     <CheckCircle2 className="h-4 w-4" />
-                    <span>Manuscript processing finished. Artifacts are ready!</span>
+                    <span>{t('pipeline.finished')}</span>
                   </div>
                   <Button
                     size="sm"
                     className="gap-1.5"
                     onClick={() => onOpenBook(completedBookFolder)}
                   >
-                    <span>Open Book Studio</span>
+                    <span>{t('pipeline.openBook')}</span>
                     <ArrowRight className="h-3.5 w-3.5" />
                   </Button>
                 </div>

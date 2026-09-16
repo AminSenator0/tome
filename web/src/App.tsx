@@ -9,6 +9,7 @@ import { PipelineView } from './views/PipelineView'
 import { ToolsView } from './views/ToolsView'
 import { PromptsView } from './views/PromptsView'
 import { SettingsView } from './views/SettingsView'
+import { MetricsView } from './views/MetricsView'
 
 export const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null)
@@ -137,6 +138,7 @@ export const App: React.FC = () => {
                 <PipelineView onOpenBook={handleOpenBookFromPipeline} />
               )}
               {currentTab === 'tools' && <ToolsView />}
+              {currentTab === 'metrics' && <MetricsView />}
               {currentTab === 'prompts' && <PromptsView />}
               {currentTab === 'settings' && <SettingsView />}
             </>

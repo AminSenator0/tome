@@ -46,6 +46,62 @@ export interface BookDetail {
   has_pdf: boolean
 }
 
+export interface PipelineStatusResponse {
+  task_id: string
+  status: string
+  progress: number
+  current_stage: string
+  book_folder: string
+  file_path: string
+  error: string
+  logs: Array<{ event: string; data: any; timestamp: number }>
+}
+
+export interface DashboardBookEntry {
+  folder: string
+  title: string
+  model: string
+  chapters: number
+  tokens: number
+  cost_toman: number
+  cost_usd: number
+  cost_toman_current: number
+  exchange_rate: number
+  duration_seconds: number
+  updated_at: number
+}
+
+export interface DashboardTotals {
+  books: number
+  chapters: number
+  tokens: number
+  prompt_tokens: number
+  completion_tokens: number
+  reasoning_tokens: number
+  cost_toman: number
+  cost_usd: number
+  cost_toman_current: number
+  duration_seconds: number
+}
+
+export interface DashboardModelEntry {
+  model: string
+  books: number
+  chapters: number
+  tokens: number
+  cost_toman: number
+}
+
+export interface MetricsDashboard {
+  totals: DashboardTotals
+  books: DashboardBookEntry[]
+  models: DashboardModelEntry[]
+  credit: any
+  current_exchange_rate: number
+  rate_info?: { auto: boolean; auto_value: number | null; auto_at: number | null }
+  generated_at: number
+}
+
 const getStorageItem = (key: string): string | null => {
   if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
     return localStorage.getItem(key)
@@ -145,6 +201,17 @@ export class Api {
 
   static async deleteBook(title: string): Promise<void> {
     await this.request(`/api/books/${encodeURIComponent(title)}`, { method: 'DELETE' })
+  }
+
+  static async getBookQuality(title: string): Promise<Record<string, { score: number; reason: string }>> {
+    const res = await this.request<{ scores: Record<string, { score: number; reason: string }> }>(
+      `/api/books/${encodeURIComponent(title)}/quality`,
+    )
+    return res.scores || {}
+  }
+
+  static async getMetricsDashboard(): Promise<MetricsDashboard> {
+    return this.request<MetricsDashboard>('/api/metrics/dashboard')
   }
 
   static async getBook(title: string): Promise<BookDetail> {
@@ -334,6 +401,14 @@ export class Api {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ book_title, eastern_font, western_font }),
     })
+  }
+
+  static async getPipelineStatus(taskId: string): Promise<PipelineStatusResponse> {
+    return this.request<PipelineStatusResponse>(`/api/pipeline/status/${taskId}`)
+  }
+
+  static async cancelPipeline(taskId: string): Promise<void> {
+    await this.request(`/api/pipeline/cancel/${taskId}`, { method: 'POST' })
   }
 
   static async runPipeline(params: {

@@ -721,6 +721,12 @@ def compile_book_to_docx(
     font_cs = font_eastern if is_rtl else font_western
     font_latin = font_western
 
+    body_size = "14"
+    with contextlib.suppress(Exception):
+        _tome_size = json.loads(Path("tome.json").read_text(encoding="utf-8")).get("docx_body_size")
+        if _tome_size:
+            body_size = str(_tome_size)
+
     align_body = "both"
     align_h1 = "center"
     align_h2 = "right" if is_rtl else "left"
@@ -747,8 +753,9 @@ def compile_book_to_docx(
             "path": "/styles/Normal",
             "props": {
                 "align": align_body,
+                "size": body_size,
                 "lineSpacing": cfg.line_spacing,
-                "spaceAfter": "4pt",
+                "spaceAfter": "6pt",
                 "firstLineIndent": cfg.paragraph_indent,
                 "widowControl": "true",
                 "direction": direction,
@@ -882,6 +889,14 @@ def compile_book_to_docx(
     merged_sections: list[str] = []
     temp_files: list[Path] = []
     try:
+        with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tf_title:
+            tf_title.write(f"# {book_title}\n")
+            title_page_path = Path(tf_title.name)
+        temp_files.append(title_page_path)
+        batch_items.append({"command": "add", "parent": "/", "type": "markdown", "props": {"src": str(title_page_path.resolve())}})
+        if not cfg.heading1_pagebreak:
+            batch_items.append({"command": "add", "parent": "/", "type": "pagebreak"})
+
         for idx, file_path in enumerate(files):
             raw_text = file_path.read_text(encoding="utf-8")
             sanitized = sanitize_markdown_for_typesetting(raw_text)

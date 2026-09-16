@@ -6,8 +6,17 @@ import {
   CheckCircle2,
   Terminal,
   ArrowRight,
+  Square,
 } from 'lucide-react'
 import { Api, BookSummary } from '../api'
+import {
+  getMonitorState,
+  subscribePipeline,
+  startPipelineMonitor,
+  cancelPipelineTask,
+  appendMonitorLog,
+  MonitorState,
+} from '../lib/pipelineMonitor'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
@@ -37,10 +46,22 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onOpenBook }) => {
   const [skipGliner, setSkipGliner] = useState(false)
   const [chapters, setChapters] = useState('')
 
-  const [running, setRunning] = useState(false)
-  const [logs, setLogs] = useState<string[]>([])
-  const [status, setStatus] = useState<'idle' | 'running' | 'completed' | 'failed'>('idle')
-  const [completedBookFolder, setCompletedBookFolder] = useState<string | null>(null)
+  const [mon, setMon] = useState<MonitorState>(() => getMonitorState())
+  const running = mon.status === 'running' || mon.status === 'cancelling'
+  const logs = mon.logs
+  const completedBookFolder = mon.bookFolder
+  const status = mon.status
+
+  useEffect(() => subscribePipeline(setMon), [])
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (terminalRef.current) {
+        terminalRef.current.scrollTop = terminalRef.current.scrollHeight
+      }
+    }, 50)
+    return () => clearTimeout(t)
+  }, [mon.logs])
 
   const [existingBooks, setExistingBooks] = useState<BookSummary[]>([])
   const [selectedExisting, setSelectedExisting] = useState('')
@@ -127,9 +148,6 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onOpenBook }) => {
 
   const startPipeline = async () => {
     if (!uploadedPath) return
-    setRunning(true)
-    setStatus('running')
-    setLogs(['Pipeline initialized. Starting execution harness...'])
 
     try {
       const res = await Api.runPipeline({
@@ -144,87 +162,9 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onOpenBook }) => {
         chapters: chapters || undefined,
       })
 
-      const taskId = res.task_id
-      const eventSource = new EventSource(`/api/pipeline/events/${taskId}`)
-
-      eventSource.onmessage = (event) => {
-        try {
-          const payload = JSON.parse(event.data)
-          let logLine = ""
-          const evt = payload.event
-          const data = payload.data || {}
-
-          if (evt === "stage_start") {
-            const stage = String(data.stage || "").replace(/_/g, " ").toUpperCase()
-            logLine = `▸ [STAGE] Starting ${stage}...`
-          } else if (evt === "conversion_complete") {
-            logLine = `✓ [CONVERSION] Loaded ${data.page_count || 1} pages in ${data.duration || 0}s`
-          } else if (evt === "images_extracted") {
-            logLine = `✓ [IMAGES] Extracted ${data.image_count || 0} illustrations in ${data.duration || 0}s`
-          } else if (evt === "genre_detected") {
-            logLine = `ℹ [GENRE] Detected: ${data.genre}`
-          } else if (evt === "metadata_extracted") {
-            logLine = `ℹ [METADATA] ${data.title || "Extracted metadata"}`
-          } else if (evt === "chapterization_complete") {
-            logLine = `✓ [CHAPTERS] Found ${data.chapter_count || 0} chapters in ${data.duration || 0}s`
-          } else if (evt === "extraction_complete") {
-            logLine = `✓ [ENTITIES] Extracted ${data.entity_count || 0} entities in ${data.duration || 0}s`
-          } else if (evt === "glossary_translation_complete") {
-            logLine = `✓ [GLOSSARY] Bilingual entity glossary compiled`
-          } else if (evt === "graph_built") {
-            logLine = `✓ [GRAPH] Character relationship graph constructed`
-          } else if (evt === "chapter_translation_complete") {
-            logLine = `✓ [TRANSLATED] Chapter ${data.chapter} in ${data.duration || 0}s`
-          } else if (evt === "translation_attempt") {
-            if ((data.attempt || 1) > 1) {
-              logLine = `▸ [ATTEMPT ${data.attempt}/${data.max_attempts || 3}] ${data.chapter || ""}`
-            }
-          } else if (evt === "warning") {
-            logLine = `⚠ [WARN] ${data.warning || JSON.stringify(data)}`
-          } else if (evt === "error") {
-            logLine = `✖ [ERROR] ${data.error || JSON.stringify(data)}`
-          } else if (evt === "pipeline_complete" || data.status === "completed") {
-            logLine = `★ [COMPLETED] Pipeline execution completed successfully!`
-            setStatus("completed")
-            setRunning(false)
-            if (data.book_folder) {
-              setCompletedBookFolder(data.book_folder)
-            }
-            eventSource.close()
-          } else if (data.log) {
-            logLine = data.log
-          } else if (typeof data === "string") {
-            logLine = data
-          }
-
-          if (logLine) {
-            setLogs((prev) => [...prev, logLine])
-            setTimeout(() => {
-              if (terminalRef.current) {
-                terminalRef.current.scrollTop = terminalRef.current.scrollHeight
-              }
-            }, 50)
-          }
-
-          if (payload.status === "failed" || evt === "error") {
-            setStatus("failed")
-            setRunning(false)
-            eventSource.close()
-          }
-        } catch {
-          setLogs((prev) => [...prev, event.data])
-        }
-      }
-
-      eventSource.onerror = () => {
-        eventSource.close()
-        setRunning(false)
-        setStatus((prev) => (prev === 'running' ? 'failed' : prev))
-      }
+      startPipelineMonitor(res.task_id)
     } catch (err: any) {
-      setRunning(false)
-      setStatus('failed')
-      setLogs((prev) => [...prev, `[ERR] Launch failed: ${err.message}`])
+      appendMonitorLog(`[ERR] Launch failed: ${err.message}`)
     }
   }
 
@@ -430,7 +370,34 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onOpenBook }) => {
               <div className="flex items-center gap-2.5">
                 <Terminal className="h-4 w-4 text-primary" />
                 <CardTitle className="text-base">Live Execution Console</CardTitle>
+                {mon.status !== 'idle' && (
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ${
+                      mon.status === 'running'
+                        ? 'bg-primary/15 text-primary'
+                        : mon.status === 'completed'
+                          ? 'bg-success-light text-success'
+                          : 'bg-destructive/15 text-destructive'
+                    }`}
+                  >
+                    {mon.status}
+                  </span>
+                )}
               </div>
+              {mon.status === 'running' && mon.taskId && (
+                <Button
+                  size="sm"
+                  className="gap-1.5 bg-rose-500/15 text-rose-600 dark:text-rose-400 hover:bg-rose-500/25"
+                  onClick={() => {
+                    if (window.confirm('Cancel this pipeline run? The current chapter will finish, then it stops.')) {
+                      cancelPipelineTask(mon.taskId as string)
+                    }
+                  }}
+                >
+                  <Square className="h-3.5 w-3.5" />
+                  <span>Cancel</span>
+                </Button>
+              )}
             </CardHeader>
             <CardContent className="flex-1 flex flex-col p-6 pt-0">
               <div

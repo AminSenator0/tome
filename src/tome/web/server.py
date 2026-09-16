@@ -8,9 +8,10 @@ import re
 import secrets
 import shutil
 import tempfile
+import threading
 import time
 import zipfile
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from pathlib import Path
 from typing import Any
 
@@ -112,6 +113,21 @@ logger = logging.getLogger(__name__)
 
 active_tasks: dict[str, dict[str, Any]] = {}
 task_event_queues: dict[str, list[asyncio.Queue]] = {}
+pipeline_cancel_events: dict[str, Any] = {}
+
+
+class PipelineCancelled(Exception):
+    """Raised internally when the user cancels a running pipeline task."""
+
+
+def _make_cancelling_observer(task_id: str, observer: Callable[[str, Any], None]) -> Callable[[str, Any], None]:
+    def wrapped(event: str, data: Any) -> None:
+        ev = pipeline_cancel_events.get(task_id)
+        if ev is not None and ev.is_set():
+            raise PipelineCancelled(f"Task {task_id} cancelled by user")
+        observer(event, data)
+
+    return wrapped
 
 
 def setup_web_loggers(log_dir: Path) -> None:
@@ -667,9 +683,8 @@ async def api_extract_entities(req: ExtractEntitiesRequest, user: User = Depends
     if not text.strip():
         raise HTTPException(status_code=400, detail="Text or valid book required for entity extraction")
 
-    model_path = ensure_gliner_model(req.model, endpoint=config.hf_mirror_endpoint)
     tax = config.get_taxonomy(req.genre)
-    raw = extract_entities(text, model_path, tax, batch_size=req.batch_size)
+    raw = extract_entities(text, req.model, tax, batch_size=req.batch_size)
     clustered = cluster_entities(raw)
     return {
         "raw_count": len(raw),
@@ -885,6 +900,110 @@ async def api_compile_docx(req: CompileDocxRequest, user: User = Depends(get_cur
         "pdf_path": str(pdf_path) if pdf_path.exists() else None,
         "docx_url": f"/api/books/{clean_title}/download/docx",
         "pdf_url": f"/api/books/{clean_title}/download/pdf" if pdf_path.exists() else None,
+    }
+
+
+@app.get("/api/books/{title}/quality")
+async def api_book_quality(title: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
+    config = TomeConfig.load_config()
+    clean_title = Path(title).name
+    qpath = config.output_dir / clean_title / "quality_scores.json"
+    data: dict[str, Any] = {}
+    with contextlib.suppress(Exception):
+        if qpath.exists():
+            data = json.loads(qpath.read_text(encoding="utf-8"))
+    return {"book": clean_title, "scores": data}
+
+
+@app.get("/api/metrics/dashboard")
+async def api_metrics_dashboard(user: User = Depends(get_current_user)) -> dict[str, Any]:
+    config = TomeConfig.load_config()
+    from tome.core.avalai import resolve_exchange_rate
+
+    current_rate = resolve_exchange_rate(config)
+    books: list[dict[str, Any]] = []
+    totals = {
+        "books": 0, "chapters": 0, "tokens": 0, "prompt_tokens": 0,
+        "completion_tokens": 0, "reasoning_tokens": 0,
+        "cost_toman": 0.0, "cost_usd": 0.0, "cost_toman_current": 0.0, "duration_seconds": 0.0,
+    }
+    by_model: dict[str, dict[str, Any]] = {}
+    output_root = Path(config.output_dir)
+    if output_root.is_dir():
+        for metrics_file in sorted(output_root.glob("*/metrics.json")):
+            with contextlib.suppress(Exception):
+                data = json.loads(metrics_file.read_text(encoding="utf-8"))
+                folder = metrics_file.parent.name
+                chapters = data.get("chapters") or []
+                prompt_tokens = sum(int(c.get("prompt_tokens") or 0) for c in chapters)
+                completion_tokens = sum(int(c.get("completion_tokens") or 0) for c in chapters)
+                reasoning_tokens = sum(int(c.get("reasoning_tokens") or 0) for c in chapters)
+                total_tokens = prompt_tokens + completion_tokens + reasoning_tokens
+                cost_toman = round(sum(float(c.get("cost_toman") or c.get("cost_irt") or 0) for c in chapters), 2)
+                if not chapters:
+                    total_tokens = int(data.get("total_tokens") or 0)
+                    cost_toman = float(data.get("total_cost_toman") or 0)
+                book_rate = float(data.get("exchange_rate") or 70000.0)
+                cost_usd = round(cost_toman / book_rate, 6)
+                cost_toman_current = round(cost_usd * current_rate, 2)
+                duration = float(data.get("total_duration_seconds") or 0)
+                model = str(data.get("model") or "unknown")
+                entry = {
+                    "folder": folder,
+                    "title": data.get("book_title") or folder,
+                    "model": model,
+                    "chapters": len(chapters) or int(data.get("total_chapters") or 0),
+                    "tokens": total_tokens,
+                    "cost_toman": cost_toman,
+                    "cost_usd": cost_usd,
+                    "exchange_rate": book_rate,
+                    "cost_toman_current": cost_toman_current,
+                    "duration_seconds": duration,
+                    "updated_at": metrics_file.stat().st_mtime,
+                }
+                books.append(entry)
+                totals["books"] += 1
+                totals["chapters"] += entry["chapters"]
+                totals["tokens"] += total_tokens
+                totals["prompt_tokens"] += prompt_tokens
+                totals["completion_tokens"] += completion_tokens
+                totals["reasoning_tokens"] += reasoning_tokens
+                totals["cost_toman"] = round(totals["cost_toman"] + cost_toman, 2)
+                totals["cost_usd"] = round(totals["cost_usd"] + cost_usd, 6)
+                totals["cost_toman_current"] = round(totals["cost_toman_current"] + cost_toman_current, 2)
+                totals["duration_seconds"] = round(totals["duration_seconds"] + duration, 2)
+                m = by_model.setdefault(model, {"model": model, "books": 0, "chapters": 0, "tokens": 0, "cost_toman": 0.0})
+                m["books"] += 1
+                m["chapters"] += entry["chapters"]
+                m["tokens"] += total_tokens
+                m["cost_toman"] = round(m["cost_toman"] + cost_toman, 2)
+
+    books.sort(key=lambda b: b["cost_toman"], reverse=True)
+    credit = None
+    with contextlib.suppress(Exception):
+        from tome.core.avalai import get_avalai_credit, is_avalai_endpoint
+
+        base_url = getattr(config, "llm_base_url", None) or ""
+        api_key = getattr(config, "llm_api_key", None) or ""
+        proxy_url = getattr(config, "proxy_url", None)
+        if api_key and is_avalai_endpoint(base_url):
+            credit = get_avalai_credit(api_key, proxy_url=proxy_url)
+    rate_info = {"auto": False, "auto_value": None, "auto_at": None}
+    with contextlib.suppress(Exception):
+        tj = json.loads(Path("tome.json").read_text(encoding="utf-8"))
+        rate_info = {
+            "auto": bool(tj.get("exchange_rate_auto")),
+            "auto_value": tj.get("exchange_rate_auto_value"),
+            "auto_at": tj.get("exchange_rate_auto_at"),
+        }
+    return {
+        "totals": totals,
+        "books": books,
+        "models": sorted(by_model.values(), key=lambda x: x["cost_toman"], reverse=True),
+        "credit": credit,
+        "current_exchange_rate": current_rate,
+        "rate_info": rate_info,
+        "generated_at": time.time(),
     }
 
 
@@ -1192,9 +1311,10 @@ async def api_run_pipeline_task(
             raise HTTPException(status_code=400, detail=f"File not found: {req.file_path}")
 
     cutoff = time.time() - 86400
-    for _tid in [t for t, i in active_tasks.items() if i.get("status") in ("completed", "failed") and i.get("created_at", 0) < cutoff]:
+    for _tid in [t for t, i in active_tasks.items() if i.get("status") in ("completed", "failed", "cancelled") and i.get("created_at", 0) < cutoff]:
         active_tasks.pop(_tid, None)
         task_event_queues.pop(_tid, None)
+        pipeline_cancel_events.pop(_tid, None)
     task_id = f"task_{int(time.time())}_{secrets.token_hex(4)}"
     active_tasks[task_id] = {
         "task_id": task_id,
@@ -1220,6 +1340,8 @@ async def api_run_pipeline_task(
             q.put_nowait(msg)
 
     def _runner() -> None:
+        pipeline_cancel_events[task_id] = threading.Event()
+        _runner_observer = _make_cancelling_observer(task_id, _observer)
         try:
             runner_cfg = TomeConfig.load_config()
             if req.genre:
@@ -1247,11 +1369,11 @@ async def api_run_pipeline_task(
 
             if req.chapters or (req.translate and has_existing_chapters):
                 _observer("stage_start", {"stage": "chapter_translation", "chapters": req.chapters})
-                translate_book(book_dir, runner_cfg, chapters=req.chapters, observer=_observer)
+                translate_book(book_dir, runner_cfg, chapters=req.chapters, observer=_runner_observer)
             else:
-                run_pipeline(p, runner_cfg, observer=_observer)
+                run_pipeline(p, runner_cfg, observer=_runner_observer)
                 if req.translate:
-                    translate_book(book_dir, runner_cfg, chapters=req.chapters, observer=_observer)
+                    translate_book(book_dir, runner_cfg, chapters=req.chapters, observer=_runner_observer)
 
             if req.translate:
                 try:
@@ -1270,7 +1392,7 @@ async def api_run_pipeline_task(
                         output_docx=book_dir / f"{book_dir.name}.docx",
                         config=runner_cfg,
                         title=book_dir.name,
-                        observer=_observer,
+                        observer=_runner_observer,
                         metadata=meta_obj,
                     )
                 except Exception as comp_err:
@@ -1280,7 +1402,14 @@ async def api_run_pipeline_task(
                 active_tasks[task_id]["status"] = "completed"
                 active_tasks[task_id]["book_folder"] = book_dir.name
             _observer("pipeline_complete", {"book_folder": book_dir.name, "status": "completed"})
+            pipeline_cancel_events.pop(task_id, None)
+        except PipelineCancelled:
+            pipeline_cancel_events.pop(task_id, None)
+            if task_id in active_tasks:
+                active_tasks[task_id]["status"] = "cancelled"
+            _observer("pipeline_cancelled", {"message": "Pipeline cancelled by user"})
         except Exception as err:
+            pipeline_cancel_events.pop(task_id, None)
             if task_id in active_tasks:
                 active_tasks[task_id]["status"] = "failed"
                 active_tasks[task_id]["error"] = str(err)
@@ -1288,6 +1417,42 @@ async def api_run_pipeline_task(
 
     bg_tasks.add_task(_runner)
     return {"task_id": task_id, "status": "started"}
+
+
+@app.get("/api/pipeline/status/{task_id}")
+async def api_pipeline_status(task_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
+    info = active_tasks.get(task_id)
+    if not info:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {
+        "task_id": task_id,
+        "status": info.get("status", "unknown"),
+        "progress": info.get("progress", 0),
+        "current_stage": info.get("current_stage", ""),
+        "book_folder": info.get("book_folder", ""),
+        "file_path": info.get("file_path", ""),
+        "error": info.get("error", ""),
+        "logs": info.get("logs", []),
+    }
+
+
+@app.post("/api/pipeline/cancel/{task_id}")
+async def api_pipeline_cancel(task_id: str, user: User = Depends(get_current_user)) -> dict[str, str]:
+    info = active_tasks.get(task_id)
+    if not info:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if info.get("status") != "running":
+        return {"status": "ignored", "detail": f"Task already {info.get('status')}"}
+    ev = pipeline_cancel_events.setdefault(task_id, threading.Event())
+    ev.set()
+    info["status"] = "cancelling"
+    for q in task_event_queues.get(task_id, []):
+        q.put_nowait({
+            "event": "cancelling",
+            "data": {"message": "Cancellation requested by user"},
+            "timestamp": time.time(),
+        })
+    return {"status": "ok"}
 
 
 @app.get("/api/pipeline/events/{task_id}")
@@ -1311,7 +1476,7 @@ async def api_pipeline_events(task_id: str, request: Request) -> StreamingRespon
                     yield f"data: {json.dumps(event_data, default=str)}\n\n"
                 except TimeoutError:
                     yield ": ping\n\n"
-                if active_tasks[task_id]["status"] in ("completed", "failed") and queue.empty():
+                if active_tasks[task_id]["status"] in ("completed", "failed", "cancelled") and queue.empty():
                     break
         finally:
             if task_id in task_event_queues and queue in task_event_queues[task_id]:
@@ -1373,16 +1538,21 @@ async def api_get_config(user: User = Depends(get_current_user)) -> dict[str, An
 
 
 @app.post("/api/config")
-async def api_update_config(req: ConfigUpdateRequest, user: User = Depends(get_current_user)) -> dict[str, str]:
+async def api_update_config(req: dict[str, Any], user: User = Depends(get_current_user)) -> dict[str, str]:
     tome_json = Path("tome.json")
     data: dict[str, Any] = {}
     if tome_json.exists():
         data = json.loads(tome_json.read_text(encoding="utf-8"))
 
-    for section_name in ("general", "llm", "proxy", "nlp", "translation", "typography"):
-        val = getattr(req, section_name, None)
+    section_names = ("general", "llm", "proxy", "nlp", "translation", "typography")
+    for section_name in section_names:
+        val = req.get(section_name)
         if val is not None:
             data.setdefault(section_name, {}).update(val)
+
+    for key, value in req.items():
+        if key not in section_names:
+            data[key] = value
 
     tome_json.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
     TomeConfig.load_config()

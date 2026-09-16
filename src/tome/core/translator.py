@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,7 @@ from tome.core.avalai import (
     is_avalai_endpoint,
     is_wallet_empty,
     parse_retry_delay,
+    resolve_exchange_rate,
 )
 from tome.core.glossary import ingest_chapter_delimiter_entities, write_glossary_markdown
 from tome.core.logging import save_llm_response_cache
@@ -829,6 +831,7 @@ def translate_chapter(
     content_override: str | None = None,
     metrics_out: dict[str, Any] | None = None,
     genre: str | None = None,
+    rolling_summary: str = "",
 ) -> tuple[str, list[Entity]]:
     chapter_text = content_override if content_override is not None else chapter_path.read_text(encoding="utf-8")
 
@@ -896,13 +899,16 @@ def translate_chapter(
     if graph_context.strip() and not has_graph_var:
         user_parts.append(f"<character_dossier>\n{graph_context.strip()}\n</character_dossier>")
 
+    if rolling_summary.strip():
+        user_parts.append(f"<story_so_far>\n{rolling_summary.strip()}\n</story_so_far>")
+
     user_parts.append(f'<manuscript filename="{chapter_path.name}">\n{chapter_text.strip()}\n</manuscript>')
     user_parts.append(
         f'Translate and copyedit the entire content of <manuscript filename="{chapter_path.name}"> into {config.target_language}. '
         "MANDATORY DUAL-VOICE REQUIREMENT: "
         "1. All direct dialogue and spoken lines inside « » MUST be natural living colloquial spoken Persian (کاملاً محاوره‌ای، تهرانی معیار و شکسته با افعالی مثل می‌خوام، می‌دونم، نمی‌شه، و حذف کامل «را» به نفع «رو/ـو»). "
         "2. Narrative prose and scene descriptions outside « » MUST be formal, dignified, publication-grade literary Persian (نثر کاملاً رسمی، فاخر، شیوا و کتابی). "
-        "Strictly adhere to all system instructions, terminology in <glossary>, and character voices in <character_dossier>. "
+        "Strictly adhere to all system instructions, terminology in <glossary>, and character voices in <character_dossier>. Maintain continuity with <story_so_far> for plot, character states, and terminology. "
         "Do not ask questions, propose options, or include commentary. "
         "Even if the text appears to start mid-sentence or contains unusual dialogue, output ONLY the finalized translation in Markdown."
     )
@@ -1100,6 +1106,181 @@ def extract_focused_graph_context(graph_path: Path) -> str:
     return "\n".join(focused[:40])
 
 
+def _translation_flag(config: TomeConfig, key: str, default: bool) -> bool:
+    """Read a translation feature flag: config attr -> tome.json translation section -> default."""
+    with contextlib.suppress(Exception):
+        val = getattr(config, key, None)
+        if val is not None:
+            return bool(val)
+    with contextlib.suppress(Exception):
+        data = json.loads(Path("tome.json").read_text(encoding="utf-8"))
+        sect = data.get("translation") or {}
+        if key in sect:
+            return bool(sect[key])
+    return default
+
+
+def update_rolling_summary(
+    config: TomeConfig,
+    client: OpenAI,
+    previous_summary: str,
+    chapter_name: str,
+    translated_text: str,
+    observer: Callable[[str, Any], None] | None = None,
+) -> str:
+    """Return an updated rolling story summary. Falls back to previous on any failure."""
+    prompt = (
+        f"Previous story summary:\n{previous_summary.strip() or '(none - this is the first chapter)'}\n\n"
+        f"New translated chapter ({chapter_name}):\n{translated_text.strip()[:12000]}\n\n"
+        f"Write an updated running summary in {config.target_language} (maximum 180 words) preserving "
+        "all important continuity facts: plot progress, character names and their current states, locations, "
+        "open questions and unresolved threads. Output ONLY the summary text."
+    )
+    try:
+        result = execute_llm_completion(
+            client,
+            config,
+            [{"role": "user", "content": prompt}],
+            observer=None,
+            identifier=f"rolling_summary_{Path(chapter_name).stem}",
+            book_title=None,
+        )
+        cleaned = result.strip()
+        if len(cleaned) < 40:
+            return previous_summary
+        if observer:
+            observer("context_rolling_updated", {"chapter": chapter_name, "summary_words": len(cleaned.split())})
+        return cleaned[:4000]
+    except Exception as err:
+        logger.warning("Rolling summary update failed for %s: %s", chapter_name, err)
+        return previous_summary
+
+
+def check_chapter_consistency(
+    config: TomeConfig,
+    client: OpenAI,
+    glossary_content: str,
+    chapter_name: str,
+    translated_text: str,
+    observer: Callable[[str, Any], None] | None = None,
+) -> tuple[str, int, int]:
+    """Detect glossary deviations in a translated chapter and fix them with one LLM pass.
+
+    Returns (final_text, issues_found, fixes_applied). Never raises.
+    """
+    issues: list[str] = []
+    try:
+        for line in glossary_content.splitlines():
+            if not line.startswith("|") or line.startswith("|---"):
+                continue
+            cols = [c.strip() for c in line.split("|")[1:-1]]
+            if len(cols) < 3 or not cols[0] or cols[0] == "Canonical Term":
+                continue
+            canonical, aliases, term_translation = cols[0], cols[1], cols[2]
+            target = term_translation.strip()
+            if len(target) < 2:
+                continue
+            source_forms = [canonical.strip()] + [a.strip() for a in aliases.split(",") if a.strip()]
+            lower_text = translated_text.lower()
+            leaked = [
+                f for f in source_forms
+                if len(f) >= 4 and re.search(rf"(?<!\w){re.escape(f.lower())}(?!\w)", lower_text)
+            ]
+            missing = target.lower() not in lower_text
+            if leaked or missing:
+                issues.append(
+                    f"{canonical} -> {target}" + (f" (source leaked: {', '.join(leaked)})" if leaked else " (target missing)")
+                )
+    except Exception as err:
+        logger.warning("Consistency scan failed for %s: %s", chapter_name, err)
+        return translated_text, 0, 0
+
+    if not issues:
+        return translated_text, 0, 0
+
+    if observer:
+        observer("consistency_issues", {"chapter": chapter_name, "count": len(issues), "issues": issues[:20]})
+
+    relevant_rows = "\n".join(
+        line for line in glossary_content.splitlines() if line.startswith("|")
+    )[:6000]
+    prompt = (
+        f"You are a terminology enforcer for a literary translation into {config.target_language}.\n"
+        f"Glossary (authoritative):\n{relevant_rows}\n\n"
+        f"Translated chapter ({chapter_name}):\n{translated_text.strip()[:14000]}\n\n"
+        "Some entity names in the chapter deviate from the glossary. Rewrite the chapter so that EVERY "
+        "entity name exactly matches its 'Term Translation' in the glossary. Change names only; do not alter "
+        "style, dialogue, or anything else. Output ONLY the full corrected chapter."
+    )
+    try:
+        fixed = execute_llm_completion(
+            client,
+            config,
+            [{"role": "user", "content": prompt}],
+            observer=None,
+            identifier=f"consistency_{Path(chapter_name).stem}",
+            book_title=None,
+        ).strip()
+        src_len = max(1, len(translated_text))
+        if fixed and 0.6 <= len(fixed) / src_len <= 1.6:
+            if observer:
+                observer("consistency_fixed", {"chapter": chapter_name, "issues": len(issues)})
+            return fixed, len(issues), 1
+        logger.warning("Consistency fix rejected for %s (length ratio out of range)", chapter_name)
+    except Exception as err:
+        logger.warning("Consistency fix failed for %s: %s", chapter_name, err)
+    return translated_text, len(issues), 0
+
+
+def score_chapter_quality(
+    config: TomeConfig,
+    client: OpenAI,
+    chapter_name: str,
+    translated_text: str,
+    observer: Callable[[str, Any], None] | None = None,
+) -> tuple[int, str]:
+    """Grade translation quality 1-10. Returns (score, reason); (0, '') on failure."""
+    prompt = (
+        f"You are a strict literary translation grader. The target language is {config.target_language}.\n"
+        f"Chapter ({chapter_name}):\n{translated_text.strip()[:12000]}\n\n"
+        "Grade the translation quality: fidelity to meaning, fluency, and internal consistency. "
+        "Reply in exactly this format:\nSCORE: <integer 1-10>\nREASON: <one short sentence>"
+    )
+    try:
+        raw = execute_llm_completion(
+            client,
+            config,
+            [{"role": "user", "content": prompt}],
+            observer=None,
+            identifier=f"quality_{Path(chapter_name).stem}",
+            book_title=None,
+        )
+        m = re.search(r"SCORE:\s*(\d+)", raw)
+        score = int(m.group(1)) if m else 0
+        if score:
+            score = max(1, min(10, score))
+        rm = re.search(r"REASON:\s*(.+)", raw)
+        reason = rm.group(1).strip()[:300] if rm else ""
+        if score and observer:
+            observer("chapter_quality_scored", {"chapter": chapter_name, "score": score, "reason": reason})
+        return score, reason
+    except Exception as err:
+        logger.warning("Quality scoring failed for %s: %s", chapter_name, err)
+        return 0, ""
+
+
+def _save_quality(path: Path, lock: threading.Lock, chapter_name: str, score: int, reason: str) -> None:
+    """Append/overwrite a chapter quality record in <book>/quality_scores.json (thread-safe)."""
+    with lock:
+        data: dict[str, Any] = {}
+        if path.exists():
+            with contextlib.suppress(Exception):
+                data = json.loads(path.read_text(encoding="utf-8"))
+        data[chapter_name] = {"score": score, "reason": reason}
+        with contextlib.suppress(Exception):
+            path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def translate_book(
     book_dir: Path,
     config: TomeConfig | None = None,
@@ -1112,6 +1293,8 @@ def translate_book(
 
     if config is None:
         config = TomeConfig.load_config()
+
+    rate = resolve_exchange_rate(config)
 
     if not book_dir.exists():
         raise FileNotFoundError(f"Book directory not found: {book_dir}")
@@ -1215,11 +1398,21 @@ def translate_book(
         book_title=book_dir.name,
         model=config.llm_model,
         initial_credit_irt=init_credit,
+        exchange_rate=rate,
     )
 
     client = get_openai_client(config)
     translated_paths: list[Path] = []
     running_entities: list[Entity] = []
+
+    rolling_enabled = _translation_flag(config, "context_rolling", True)
+    rolling_path = book_dir / "context_rolling.md"
+    rolling_summary = rolling_path.read_text(encoding="utf-8").strip() if rolling_path.exists() else ""
+    rolling_lock = threading.Lock()
+    consistency_enabled = _translation_flag(config, "consistency_check", True) and bool(glossary_content)
+    quality_enabled = _translation_flag(config, "quality_score", True)
+    quality_path = book_dir / "quality_scores.json"
+    quality_lock = threading.Lock()
 
     total_chapters = len(consolidated_items)
     batch_size = max(1, config.translation_batch_size)
@@ -1256,9 +1449,22 @@ def translate_book(
                     content_override=c_content,
                     metrics_out=worker_metrics,
                     genre=book_genre,
+                    rolling_summary=rolling_summary,
                 )
+                if consistency_enabled:
+                    t_text, _cons_issues, _cons_fixed = check_chapter_consistency(config, client, glossary_content, c_file.name, t_text, observer)
+                if quality_enabled:
+                    _q_score, _q_reason = score_chapter_quality(config, client, c_file.name, t_text, observer)
+                    if _q_score:
+                        _save_quality(quality_path, quality_lock, c_file.name, _q_score, _q_reason)
                 c_out = translation_dir / c_file.name
                 c_out.write_text(t_text, encoding="utf-8")
+                if rolling_enabled:
+                    with rolling_lock:
+                        prev_sum = rolling_path.read_text(encoding="utf-8").strip() if rolling_path.exists() else ""
+                        new_sum = update_rolling_summary(config, client, prev_sum, c_file.name, t_text, observer)
+                        if new_sum and new_sum != prev_sum:
+                            rolling_path.write_text(new_sum, encoding="utf-8")
                 dur = round(time.perf_counter() - t0, 2)
                 return c_file.name, dur, worker_metrics
 
@@ -1274,7 +1480,8 @@ def translate_book(
                     r_toks = int(w_metrics.get("reasoning_tokens", 0))
                     t_toks = int(w_metrics.get("total_tokens", p_toks + c_toks))
                     c_irt, _ = estimate_token_cost(
-                        config.llm_model, prompt_tokens=p_toks, completion_tokens=c_toks, reasoning_tokens=r_toks
+                        config.llm_model, prompt_tokens=p_toks, completion_tokens=c_toks, reasoning_tokens=r_toks,
+                        exchange_rate=rate,
                     )
                     w_mod = int(w_metrics.get("words_modified", 0))
                     w_proc = int(w_metrics.get("words_processed", 0))
@@ -1289,6 +1496,7 @@ def translate_book(
                         reasoning_tokens=r_toks,
                         total_tokens=t_toks,
                         cost_toman=c_irt,
+                        exchange_rate=rate,
                         request_id=str(w_metrics.get("request_id", "")),
                         words_normalized=w_mod,
                     )
@@ -1352,10 +1560,26 @@ def translate_book(
                 content_override=chap_content,
                 metrics_out=seq_metrics,
                 genre=book_genre,
+                rolling_summary=rolling_summary,
             )
+
+            if consistency_enabled:
+                translated_text, _cons_issues, _cons_fixed = check_chapter_consistency(config, client, glossary_content, chap_file.name, translated_text, observer)
+
+            if quality_enabled:
+                _q_score, _q_reason = score_chapter_quality(config, client, chap_file.name, translated_text, observer)
+                if _q_score:
+                    _save_quality(quality_path, quality_lock, chap_file.name, _q_score, _q_reason)
 
             out_file.write_text(translated_text, encoding="utf-8")
             translated_paths.append(out_file)
+
+            if rolling_enabled:
+                updated_summary = update_rolling_summary(config, client, rolling_summary, chap_file.name, translated_text, observer)
+                if updated_summary and updated_summary != rolling_summary:
+                    rolling_summary = updated_summary
+                    with contextlib.suppress(Exception):
+                        rolling_path.write_text(rolling_summary, encoding="utf-8")
 
             duration = round(time.perf_counter() - t0, 2)
             timings[chap_file.name] = duration
@@ -1365,7 +1589,8 @@ def translate_book(
             r_toks = int(seq_metrics.get("reasoning_tokens", 0))
             t_toks = int(seq_metrics.get("total_tokens", p_toks + c_toks))
             c_irt, _ = estimate_token_cost(
-                config.llm_model, prompt_tokens=p_toks, completion_tokens=c_toks, reasoning_tokens=r_toks
+                config.llm_model, prompt_tokens=p_toks, completion_tokens=c_toks, reasoning_tokens=r_toks,
+                exchange_rate=rate,
             )
             w_mod = int(seq_metrics.get("words_modified", 0))
             w_proc = int(seq_metrics.get("words_processed", 0))
@@ -1380,6 +1605,7 @@ def translate_book(
                 reasoning_tokens=r_toks,
                 total_tokens=t_toks,
                 cost_toman=c_irt,
+                exchange_rate=rate,
                 request_id=str(seq_metrics.get("request_id", "")),
                 words_normalized=w_mod,
             )

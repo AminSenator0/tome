@@ -4,12 +4,15 @@ import {
   Layers,
   Wrench,
   FileCode2,
+  BarChart3,
   Settings,
+  Languages,
   ChevronLeft,
 } from 'lucide-react'
 import { Logo } from './ui/Logo'
+import { useI18n } from '../lib/i18n'
 
-export type TabType = 'bookshelf' | 'pipeline' | 'tools' | 'prompts' | 'settings'
+export type TabType = 'bookshelf' | 'pipeline' | 'tools' | 'prompts' | 'metrics' | 'settings'
 
 interface SidebarProps {
   currentTab: TabType
@@ -24,12 +27,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpen,
   onCloseMobile,
 }) => {
+  const { t, lang, setLang } = useI18n()
+
   const menuItems = [
-    { id: 'bookshelf' as TabType, label: 'Overview & Library', icon: Library },
-    { id: 'pipeline' as TabType, label: 'Pipeline Studio', icon: Layers },
-    { id: 'tools' as TabType, label: 'Standalone Lab', icon: Wrench },
-    { id: 'prompts' as TabType, label: 'Prompt Studio', icon: FileCode2 },
-    { id: 'settings' as TabType, label: 'System Settings', icon: Settings },
+    { id: 'bookshelf' as TabType, label: t('nav.bookshelf'), icon: Library },
+    { id: 'pipeline' as TabType, label: t('nav.pipeline'), icon: Layers },
+    { id: 'metrics' as TabType, label: t('nav.metrics'), icon: BarChart3 },
+    { id: 'tools' as TabType, label: t('nav.tools'), icon: Wrench },
+    { id: 'prompts' as TabType, label: t('nav.prompts'), icon: FileCode2 },
+    { id: 'settings' as TabType, label: t('nav.settings'), icon: Settings },
   ]
 
   return (
@@ -59,7 +65,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-4 space-y-4 flex-1 overflow-y-auto custom-scrollbar">
           <div className="px-3 pt-2 pb-1">
             <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-              Menu
+              {t('menu.label')}
             </span>
           </div>
 
@@ -90,6 +96,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
               )
             })}
           </nav>
+        </div>
+        <div className="p-4 border-t border-border/40">
+          <button
+            onClick={() => setLang(lang === 'fa' ? 'en' : 'fa')}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-medium bg-secondary text-muted-foreground hover:text-foreground transition-colors border-0 cursor-pointer"
+          >
+            <Languages className="h-4 w-4" strokeWidth={1.5} />
+            <span>{t('lang.switch')}</span>
+          </button>
         </div>
       </aside>
     </>

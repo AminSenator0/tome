@@ -49,7 +49,9 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
   const [loadingChapter, setLoadingChapter] = useState(false)
 
   const [glossaryDraft, setGlossaryDraft] = useState('')
-  const [glossaryMode, setGlossaryMode] = useState<'preview' | 'edit'>('preview')
+  const [glossaryMode, setGlossaryMode] = useState<'preview' | 'editor' | 'edit'>('preview')
+  const [glossaryRows, setGlossaryRows] = useState<Array<{ canonical: string; aliases: string; translation: string; confidence: string }>>([])
+  const [glossarySearch, setGlossarySearch] = useState('')
   const [savingGlossary, setSavingGlossary] = useState(false)
   const [glossarySaved, setGlossarySaved] = useState(false)
 
@@ -60,6 +62,13 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
 
   const [checkedChapters, setCheckedChapters] = useState<Set<string>>(new Set())
   const [translatingChapters, setTranslatingChapters] = useState(false)
+  const [quality, setQuality] = useState<Record<string, { score: number; reason: string }>>({})
+
+  useEffect(() => {
+    Api.getBookQuality(bookFolder)
+      .then(setQuality)
+      .catch(() => {})
+  }, [bookFolder])
   const [transStatusMsg, setTransStatusMsg] = useState<string | null>(null)
 
   const [imageErrors, setImageErrors] = useState<Record<number, boolean>>({})
@@ -99,16 +108,15 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
     }
   }
 
-  const handleTranslateSelected = async () => {
-    if (checkedChapters.size === 0 || !book) return
+  const runChapterTranslation = async (slugs: string[]) => {
+    if (slugs.length === 0 || !book) return
     setTranslatingChapters(true)
-    setTransStatusMsg('Initiating translation for selected chapters...')
+    setTransStatusMsg(`Initiating translation for ${slugs.length} chapter(s)...`)
     try {
-      const slugs = Array.from(checkedChapters).join(',')
       const res = await Api.runPipeline({
-        file_path: bookFolder,
+        file_path: `output/${bookFolder}/original/book.md`,
         translate: true,
-        chapters: slugs,
+        chapters: slugs.join(','),
       })
       setTransStatusMsg('Translation task launched in background...')
       const ev = new EventSource(`/api/pipeline/events/${res.task_id}`)
@@ -121,13 +129,20 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
           } else if (d.event === 'pipeline_complete' || d.status === 'completed' || d.data?.status === 'completed') {
             ev.close()
             setTranslatingChapters(false)
-            setTransStatusMsg('Selected chapters translated!')
+            setTransStatusMsg('Chapters translated!')
             loadBook()
+            Api.getBookQuality(bookFolder).then(setQuality).catch(() => {})
             setTimeout(() => setTransStatusMsg(null), 4000)
+          } else if (d.event === 'pipeline_cancelled') {
+            ev.close()
+            setTranslatingChapters(false)
+            setTransStatusMsg('Translation cancelled.')
+            loadBook()
           } else if (d.event === 'error' || d.status === 'failed') {
             ev.close()
             setTranslatingChapters(false)
             setTransStatusMsg(`Translation error: ${d.data?.error || d.error || 'Failed'}`)
+            loadBook()
           }
         } catch {}
       }
@@ -140,6 +155,20 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
       setTranslatingChapters(false)
       setTransStatusMsg(`Error: ${err.message}`)
     }
+  }
+
+  const handleTranslateSelected = () => {
+    runChapterTranslation(Array.from(checkedChapters))
+  }
+
+  const handleTranslateRemaining = () => {
+    if (!book) return
+    const pending = book.chapters.filter((c) => !c.is_translated).map((c) => c.slug)
+    runChapterTranslation(pending)
+  }
+
+  const handleRetryChapter = (slug: string) => {
+    runChapterTranslation([slug])
   }
 
   const loadBook = async () => {
@@ -181,6 +210,65 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
       loadChapter(selectedChapterSlug)
     }
   }, [selectedChapterSlug, activeTab])
+
+  const parseGlossaryRows = (text: string) => {
+    const rows: Array<{ canonical: string; aliases: string; translation: string; confidence: string }> = []
+    for (const line of text.split('\n')) {
+      if (!line.startsWith('|') || /^[|\s:-]+$/.test(line)) continue
+      const cols = line.split('|').slice(1, -1).map((c) => c.trim())
+      if (cols.length < 3 || !cols[0] || /canonical/i.test(cols[0])) continue
+      rows.push({ canonical: cols[0], aliases: cols[1] || '', translation: cols[2] || '', confidence: cols[3] || '' })
+    }
+    return rows
+  }
+
+  const serializeGlossaryRows = (rows: Array<{ canonical: string; aliases: string; translation: string; confidence: string }>) => {
+    const lines = glossaryDraft.split('\n')
+    const headerIdx = lines.findIndex((l) => l.startsWith('|') && /canonical/i.test(l))
+    const header = headerIdx >= 0 ? lines[headerIdx] : '| Canonical Term | Aliases | Term Translation | Confidence |'
+    const sep = headerIdx >= 0 && (lines[headerIdx + 1] || '').startsWith('|') ? lines[headerIdx + 1] : '| --- | --- | --- | --- |'
+    const prefix = headerIdx >= 0 ? lines.slice(0, headerIdx) : []
+    const body = rows
+      .filter((r) => r.canonical.trim())
+      .map((r) => `| ${r.canonical.trim()} | ${r.aliases} | ${r.translation} | ${r.confidence} |`)
+    return [...prefix, header, sep, ...body].join('\n')
+  }
+
+  const mergeDuplicateRows = () => {
+    const seen = new Map<string, { canonical: string; aliases: string; translation: string; confidence: string }>()
+    for (const r of glossaryRows) {
+      const key = r.canonical.trim().toLowerCase()
+      if (!key) continue
+      const existing = seen.get(key)
+      if (!existing) {
+        seen.set(key, { ...r })
+        continue
+      }
+      const aliasSet = new Set([...existing.aliases.split(','), ...r.aliases.split(',')].map((a) => a.trim()).filter(Boolean))
+      seen.set(key, {
+        canonical: existing.canonical,
+        aliases: Array.from(aliasSet).join(', '),
+        translation: existing.translation || r.translation,
+        confidence: existing.confidence || r.confidence,
+      })
+    }
+    setGlossaryRows(Array.from(seen.values()))
+  }
+
+  const handleEditorSave = async () => {
+    const md = serializeGlossaryRows(glossaryRows)
+    setGlossaryDraft(md)
+    setSavingGlossary(true)
+    try {
+      await Api.saveGlossary(bookFolder, md)
+      setGlossarySaved(true)
+      setTimeout(() => setGlossarySaved(false), 2000)
+    } catch (err: any) {
+      alert(err.message || 'Failed to save glossary')
+    } finally {
+      setSavingGlossary(false)
+    }
+  }
 
   const handleSaveGlossary = async () => {
     setSavingGlossary(true)
@@ -609,6 +697,16 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                 >
                   <span>Translate Selected ({checkedChapters.size})</span>
                 </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={translatingChapters || book.chapters.filter((c) => !c.is_translated).length === 0}
+                  onClick={handleTranslateRemaining}
+                  loading={translatingChapters}
+                  className="h-9 text-xs font-medium px-4 rounded-full w-full sm:w-auto justify-center whitespace-nowrap"
+                >
+                  <span>Translate Remaining ({book.chapters.filter((c) => !c.is_translated).length})</span>
+                </Button>
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -645,6 +743,36 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                         >
                           {ch.is_translated ? 'Translated' : 'Pending'}
                         </div>
+                        {ch.is_translated && (quality[ch.slug] || quality[`${ch.slug}.md`]) && (
+                          (() => {
+                            const q = quality[ch.slug] || quality[`${ch.slug}.md`]
+                            return (
+                              <span
+                                title={q.reason || `Quality: ${q.score}/10`}
+                                className={`h-8 px-2.5 rounded-full flex items-center justify-center text-[11px] font-semibold ${
+                                  q.score >= 8
+                                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                    : q.score >= 6
+                                      ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                                      : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                                }`}
+                              >
+                                {q.score}/10
+                              </span>
+                            )
+                          })()
+                        )}
+                        {!ch.is_translated && (
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            disabled={translatingChapters}
+                            onClick={() => handleRetryChapter(ch.slug)}
+                            className="h-8 text-xs px-3.5 rounded-full"
+                          >
+                            Retry
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="secondary"
@@ -758,10 +886,10 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
               </CardDescription>
             </div>
 
-            <div className="w-full sm:w-auto grid grid-cols-2 sm:flex items-center p-1 rounded-full bg-secondary text-xs font-medium shrink-0">
+            <div className="w-full sm:w-auto grid grid-cols-3 sm:flex items-center p-1 rounded-full bg-secondary text-xs font-medium shrink-0">
               <button
                 type="button"
-                onClick={() => setGlossaryMode('preview')}
+                onClick={() => { setGlossaryMode('preview') }}
                 className={`flex items-center justify-center gap-1.5 h-8 px-4 rounded-full transition-all duration-200 border-0 cursor-pointer ${
                   glossaryMode === 'preview'
                     ? 'bg-foreground text-background shadow-xs font-medium'
@@ -770,6 +898,18 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
               >
                 <Eye className="h-3.5 w-3.5" />
                 <span>Preview</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setGlossaryMode('editor'); setGlossaryRows(parseGlossaryRows(glossaryDraft)) }}
+                className={`flex items-center justify-center gap-1.5 h-8 px-4 rounded-full transition-all duration-200 border-0 cursor-pointer ${
+                  glossaryMode === 'editor'
+                    ? 'bg-foreground text-background shadow-xs font-medium'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Edit3 className="h-3.5 w-3.5" />
+                <span>Editor</span>
               </button>
               <button
                 type="button"
@@ -834,11 +974,86 @@ export const BookDetailView: React.FC<BookDetailViewProps> = ({ bookFolder, onBa
                   </div>
                 )}
               </div>
+            ) : glossaryMode === 'editor' ? (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    placeholder="Search terms..."
+                    value={glossarySearch}
+                    onChange={(e) => setGlossarySearch(e.target.value)}
+                    className="h-9 w-64 text-xs"
+                  />
+                  <Button size="sm" variant="secondary" onClick={() => setGlossaryRows((prev) => [...prev, { canonical: '', aliases: '', translation: '', confidence: '' }])}>
+                    + Add Row
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={mergeDuplicateRows}>
+                    Merge Duplicates
+                  </Button>
+                  <span className="text-[11px] text-muted-foreground ms-auto tabular-nums">{glossaryRows.length} rows</span>
+                </div>
+                <div className="rounded-2xl overflow-hidden bg-secondary/30 max-h-[520px] overflow-y-auto custom-scrollbar">
+                  <table className="w-full text-xs">
+                    <thead className="bg-secondary sticky top-0">
+                      <tr className="text-left text-muted-foreground">
+                        <th className="p-2.5 font-medium">Canonical Term</th>
+                        <th className="p-2.5 font-medium">Aliases</th>
+                        <th className="p-2.5 font-medium">Term Translation</th>
+                        <th className="p-2.5 font-medium w-24">Confidence</th>
+                        <th className="p-2.5 w-10" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-secondary/40">
+                      {glossaryRows.map((r, i) => {
+                        if (glossarySearch && !`${r.canonical} ${r.aliases} ${r.translation}`.toLowerCase().includes(glossarySearch.toLowerCase())) return null
+                        return (
+                          <tr key={i} className="hover:bg-secondary/40">
+                            {(['canonical', 'aliases', 'translation', 'confidence'] as const).map((field) => (
+                              <td key={field} className="p-1.5">
+                                <input
+                                  value={r[field]}
+                                  onChange={(e) => {
+                                    const val = e.target.value
+                                    setGlossaryRows((prev) => prev.map((row, j) => (j === i ? { ...row, [field]: val } : row)))
+                                  }}
+                                  className="w-full h-8 px-2 rounded-lg bg-background/60 border-0 text-xs outline-none focus:ring-1 ring-primary/40"
+                                />
+                              </td>
+                            ))}
+                            <td className="p-1.5 text-center">
+                              <button
+                                type="button"
+                                onClick={() => setGlossaryRows((prev) => prev.filter((_, j) => j !== i))}
+                                className="h-7 w-7 rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 border-0 cursor-pointer inline-flex items-center justify-center"
+                                title="Delete row"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" onClick={handleEditorSave} loading={savingGlossary}>
+                    {glossarySaved ? 'Saved!' : 'Save Glossary'}
+                  </Button>
+                  <span className="text-[11px] text-muted-foreground">Edits apply to the pipeline glossary used in translation.</span>
+                </div>
+              </div>
             ) : (
-              <div className="rounded-3xl bg-secondary/30 p-4 overflow-hidden">
-                <pre className="font-mono text-xs max-h-[500px] overflow-y-auto custom-scrollbar select-text text-foreground leading-relaxed">
-                  {glossaryDraft}
-                </pre>
+              <div className="rounded-3xl bg-secondary/30 p-4 overflow-hidden space-y-3">
+                <Textarea
+                  value={glossaryDraft}
+                  onChange={(e) => setGlossaryDraft(e.target.value)}
+                  className="font-mono text-xs min-h-[400px] bg-background/60"
+                />
+                <div className="flex items-center gap-2">
+                  <Button size="sm" onClick={handleSaveGlossary} loading={savingGlossary}>
+                    {glossarySaved ? 'Saved!' : 'Save Raw Glossary'}
+                  </Button>
+                </div>
               </div>
             )}
           </CardContent>

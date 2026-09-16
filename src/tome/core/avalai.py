@@ -96,6 +96,98 @@ def estimate_token_cost(
     return round(cost_irt, 2), round(cost_usd, 6)
 
 
+import time
+
+DEFAULT_EXCHANGE_RATE = 70000.0
+
+AUTO_RATE_CACHE_SECONDS = 21600
+DEFAULT_AUTO_RATE_URL = "https://api.brsapi.ir/Market/Gold_Currency.php?key=BTcbzt9hYhndeLvdDnDQxLRXGc8LTBh4"
+
+
+def _extract_usd_rate(payload: Any) -> float | None:
+    """Find the USD price (toman) in a market API payload, tolerating schema changes."""
+    if isinstance(payload, dict):
+        if isinstance(payload.get("currency"), list):
+            for item in payload["currency"]:
+                with contextlib.suppress(Exception):
+                    name = str(item.get("name") or item.get("title") or "")
+                    if "دلار" in name or name.strip().upper() in {"USD", "US DOLLAR", "DOLLAR"}:
+                        for key in ("price", "sell", "buy", "value"):
+                            with contextlib.suppress(Exception):
+                                return float(item[key])
+        for key, value in payload.items():
+            if isinstance(key, str) and key.strip().upper() in {"USD", "DOLLAR"} and isinstance(value, dict):
+                for k in ("price", "sell", "buy", "value"):
+                    with contextlib.suppress(Exception):
+                        return float(value[k])
+        for value in payload.values():
+            found = _extract_usd_rate(value)
+            if found:
+                return found
+    elif isinstance(payload, list):
+        for item in payload:
+            if isinstance(item, dict):
+                name = str(item.get("name") or item.get("title") or item.get("symbol") or "")
+                if "دلار" in name or name.strip().upper() in {"USD", "US DOLLAR", "DOLLAR"}:
+                    for k in ("price", "sell", "buy", "value"):
+                        with contextlib.suppress(Exception):
+                            return float(item[k])
+        for item in payload:
+            found = _extract_usd_rate(item)
+            if found:
+                return found
+    return None
+
+
+def fetch_auto_exchange_rate(config: Any = None) -> tuple[float, float] | None:
+    """Fetch USD/toman from the configured market API. Returns (rate, fetched_at) or None."""
+    import urllib.request
+
+    url = None
+    with contextlib.suppress(Exception):
+        url = getattr(config, "exchange_rate_auto_url", None)
+    if not url:
+        url = DEFAULT_AUTO_RATE_URL
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "tome/1.0"})
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
+        rate = _extract_usd_rate(payload)
+        if rate and 1000 < rate < 10_000_000:
+            return float(rate), time.time()
+    except Exception as err:
+        logger.warning("Auto exchange rate fetch failed: %s", err)
+    return None
+
+
+def resolve_exchange_rate(config: Any = None) -> float:
+    """Toman per USD. Priority: auto mode (cached/fetched) -> manual tome.json -> default."""
+    try:
+        data = json.loads(Path("tome.json").read_text(encoding="utf-8"))
+    except Exception:
+        data = {}
+
+    if data.get("exchange_rate_auto"):
+        with contextlib.suppress(Exception):
+            cached = float(data.get("exchange_rate_auto_value") or 0)
+            fetched_at = float(data.get("exchange_rate_auto_at") or 0)
+            if cached and time.time() - fetched_at < AUTO_RATE_CACHE_SECONDS:
+                return cached
+        got = fetch_auto_exchange_rate(config)
+        if got:
+            rate, at = got
+            data["exchange_rate_auto_value"] = rate
+            data["exchange_rate_auto_at"] = at
+            with contextlib.suppress(Exception):
+                Path("tome.json").write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+            return rate
+
+    manual = data.get("exchange_rate")
+    if manual:
+        return float(manual)
+    return DEFAULT_EXCHANGE_RATE
+
+
 def parse_retry_delay(headers: Any) -> float | None:
     if not headers:
         return None
@@ -143,6 +235,7 @@ class ChapterMetrics:
     cost_usd: float = 0.0
     request_id: str = ""
     words_normalized: int = 0
+    exchange_rate: float = 70000.0
 
     def __post_init__(self) -> None:
         if self.cost_toman and not self.cost_irt:
@@ -150,7 +243,7 @@ class ChapterMetrics:
         elif self.cost_irt and not self.cost_toman:
             self.cost_toman = self.cost_irt
         if self.cost_toman and not self.cost_usd:
-            self.cost_usd = round(self.cost_toman / 70000.0, 6)
+            self.cost_usd = round(self.cost_toman / (self.exchange_rate or 70000.0), 6)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -162,6 +255,7 @@ class ChapterMetrics:
             "reasoning_tokens": self.reasoning_tokens,
             "total_tokens": self.total_tokens,
             "cost_toman": self.cost_toman,
+            "exchange_rate": self.exchange_rate,
             "request_id": self.request_id,
             "words_normalized": self.words_normalized,
         }
@@ -192,6 +286,7 @@ class BookTranslationMetrics:
     nlp_words_modified: int = 0
     nlp_unique_modifications_count: int = 0
     persian_nlp_changes: dict[str, int] = field(default_factory=dict)
+    exchange_rate: float = 70000.0
 
     def __post_init__(self) -> None:
         if self.initial_credit_toman is not None and self.initial_credit_irt is None:
@@ -206,7 +301,7 @@ class BookTranslationMetrics:
         val_toman = metrics.cost_toman or metrics.cost_irt
         self.total_cost_toman = round(self.total_cost_toman + val_toman, 2)
         self.total_cost_irt = self.total_cost_toman
-        self.total_cost_usd = round(self.total_cost_usd + (metrics.cost_usd or round(val_toman / 70000.0, 6)), 6)
+        self.total_cost_usd = round(self.total_cost_usd + (metrics.cost_usd or round(val_toman / (metrics.exchange_rate or 70000.0), 6)), 6)
 
         count = len(self.chapters)
         if count > 0:
@@ -248,6 +343,7 @@ class BookTranslationMetrics:
             "total_tokens": self.total_tokens,
             "average_tokens_per_chapter": self.average_tokens_per_chapter,
             "total_cost_toman": self.total_cost_toman,
+            "exchange_rate": self.exchange_rate,
             "average_cost_toman_per_chapter": self.average_cost_toman_per_chapter,
             "chapters": [c.to_dict() for c in self.chapters],
             "nlp_words_processed": self.nlp_words_processed,
